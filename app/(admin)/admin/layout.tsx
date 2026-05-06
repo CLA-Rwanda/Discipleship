@@ -10,8 +10,9 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const isLoginPage = pathname === "/admin/login";
+  const isSetupPage = pathname === "/admin/setup-password";
 
-  if (isLoginPage) {
+  if (isLoginPage || isSetupPage) {
     return (
       <div className="min-h-dvh" style={{ background: "var(--cla-bg-dark)" }}>
         {children}

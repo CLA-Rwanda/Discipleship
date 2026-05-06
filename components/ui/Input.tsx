@@ -38,7 +38,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           </p>
         )}
         {hint && !error && (
-          <p className="text-xs" style={{ color: "rgba(232,224,216,0.45)" }}>
+          <p className="text-xs" style={{ color: "rgba(248,240,230,0.45)" }}>
             {hint}
           </p>
         )}

@@ -1,22 +1,20 @@
-@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500&display=swap");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --cla-bg-dark: #1a0505;
-  --cla-bg-card: #2e0a0a;
-  --cla-burgundy: #4a0a0a;
-  --cla-amber: #d4860a;
-  --cla-amber-light: #f0a500;
-  --cla-plum: #3d1a3d;
-  --cla-off-white: #e8e0d8;
+  --cla-bg-dark: #1e0707;
+  --cla-bg-card: #3c1212;
+  --cla-burgundy: #581616;
+  --cla-amber: #E89A10;
+  --cla-amber-light: #F8BA18;
+  --cla-plum: #4d2060;
+  --cla-off-white: #F2EAE0;
   --cla-white: #ffffff;
-  --cla-logo-yellow: #c8d400;
-  --cla-logo-olive: #6b7a00;
-  --cla-logo-purple: #5b2d8e;
-  --cla-logo-wine: #8b1a1a;
+  --cla-logo-yellow: #d4e000;
+  --cla-logo-olive: #7a8c00;
+  --cla-logo-purple: #6b38a8;
+  --cla-logo-wine: #9b2020;
 }
 
 @layer base {
@@ -34,9 +32,9 @@
   body {
     background-color: var(--cla-bg-dark);
     color: var(--cla-off-white);
-    font-family: "Barlow", "Inter", sans-serif;
     font-size: 16px;
-    line-height: 1.6;
+    line-height: 1.75;
+    letter-spacing: 0.01em;
     min-height: 100dvh;
   }
 
@@ -46,7 +44,7 @@
   h4,
   h5,
   h6 {
-    font-family: "Barlow Condensed", sans-serif;
+    font-family: var(--font-heading), sans-serif;
     font-weight: 700;
     line-height: 1.2;
     color: var(--cla-white);
@@ -55,7 +53,7 @@
   input,
   select,
   textarea {
-    font-family: "Barlow", "Inter", sans-serif;
+    font-family: inherit;
   }
 }
 
@@ -76,7 +74,7 @@
 
   /* Amber gradient text */
   .text-amber-gradient {
-    background: linear-gradient(135deg, #d4860a, #f0a500);
+    background: linear-gradient(135deg, #E89A10, #F8BA18);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -86,40 +84,40 @@
   .hero-bg {
     background: linear-gradient(
       135deg,
-      #1a0505 0%,
-      #2e0a0a 40%,
-      #4a0a0a 100%
+      #200909 0%,
+      #3e1212 40%,
+      #5c1616 100%
     );
   }
 
   /* Card styles */
   .cla-card {
     background: var(--cla-bg-card);
-    border: 1px solid rgba(212, 134, 10, 0.15);
+    border: 1px solid rgba(228, 148, 12, 0.22);
     border-left: 3px solid var(--cla-amber);
     border-radius: 0.75rem;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
   }
 
   /* Stat card */
   .stat-card {
-    background: linear-gradient(135deg, #2e0a0a, #3d1010);
-    border: 1px solid rgba(212, 134, 10, 0.2);
+    background: linear-gradient(145deg, #451414, #521818);
+    border: 1px solid rgba(228, 148, 12, 0.28);
     border-radius: 0.75rem;
     padding: 1.25rem;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   .stat-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 0 30px rgba(212, 134, 10, 0.2);
+    box-shadow: 0 0 32px rgba(228, 148, 12, 0.25);
   }
 
   /* Primary button */
   .btn-primary {
-    background: linear-gradient(135deg, #d4860a, #f0a500);
-    color: #1a0505;
-    font-family: "Barlow Condensed", sans-serif;
+    background: linear-gradient(135deg, #E89A10, #F8BA18);
+    color: #200909;
+    font-family: var(--font-heading), sans-serif;
     font-weight: 700;
     font-size: 1rem;
     letter-spacing: 0.04em;
@@ -150,7 +148,7 @@
   .btn-secondary {
     background: transparent;
     color: var(--cla-amber);
-    font-family: "Barlow Condensed", sans-serif;
+    font-family: var(--font-heading), sans-serif;
     font-weight: 700;
     font-size: 1rem;
     letter-spacing: 0.04em;
@@ -171,26 +169,26 @@
   /* Form input */
   .cla-input {
     width: 100%;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(212, 134, 10, 0.25);
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(228, 148, 12, 0.32);
     border-radius: 0.5rem;
     padding: 0.75rem 1rem;
     color: var(--cla-off-white);
-    font-family: "Barlow", sans-serif;
+    font-family: inherit;
     font-size: 1rem;
     transition: border-color 0.2s, box-shadow 0.2s;
     outline: none;
   }
   .cla-input:focus {
     border-color: var(--cla-amber);
-    box-shadow: 0 0 0 3px rgba(212, 134, 10, 0.15);
+    box-shadow: 0 0 0 3px rgba(228, 148, 12, 0.2);
   }
   .cla-input::placeholder {
-    color: rgba(232, 224, 216, 0.35);
+    color: rgba(242, 234, 224, 0.42);
   }
   .cla-input.error {
-    border-color: #8b1a1a;
-    box-shadow: 0 0 0 3px rgba(139, 26, 26, 0.15);
+    border-color: #c02828;
+    box-shadow: 0 0 0 3px rgba(192, 40, 40, 0.18);
   }
 
   /* Radio slot button */
@@ -199,20 +197,20 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.875rem 1.25rem;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(212, 134, 10, 0.2);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(228, 148, 12, 0.28);
     border-radius: 0.5rem;
     cursor: pointer;
     transition: all 0.2s;
     user-select: none;
   }
   .slot-radio:hover {
-    border-color: rgba(212, 134, 10, 0.5);
-    background: rgba(212, 134, 10, 0.06);
+    border-color: rgba(228, 148, 12, 0.6);
+    background: rgba(228, 148, 12, 0.09);
   }
   .slot-radio.selected {
     border-color: var(--cla-amber);
-    background: rgba(212, 134, 10, 0.12);
+    background: rgba(228, 148, 12, 0.16);
     box-shadow: 0 0 0 1px var(--cla-amber);
   }
 
@@ -224,34 +222,39 @@
     border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 600;
-    font-family: "Barlow Condensed", sans-serif;
+    font-family: var(--font-heading), sans-serif;
     letter-spacing: 0.04em;
   }
   .badge-amber {
-    background: rgba(212, 134, 10, 0.15);
+    background: rgba(228, 148, 12, 0.2);
     color: var(--cla-amber-light);
-    border: 1px solid rgba(212, 134, 10, 0.3);
+    border: 1px solid rgba(228, 148, 12, 0.4);
   }
   .badge-red {
-    background: rgba(139, 26, 26, 0.2);
-    color: #ff6b6b;
-    border: 1px solid rgba(139, 26, 26, 0.4);
+    background: rgba(192, 40, 40, 0.2);
+    color: #ff7878;
+    border: 1px solid rgba(192, 40, 40, 0.45);
   }
   .badge-green {
-    background: rgba(107, 122, 0, 0.2);
-    color: #c8d400;
-    border: 1px solid rgba(107, 122, 0, 0.4);
+    background: rgba(120, 140, 0, 0.2);
+    color: #d4e800;
+    border: 1px solid rgba(120, 140, 0, 0.45);
   }
   .badge-purple {
-    background: rgba(91, 45, 142, 0.2);
-    color: #b47fea;
-    border: 1px solid rgba(91, 45, 142, 0.4);
+    background: rgba(107, 56, 168, 0.22);
+    color: #c496f8;
+    border: 1px solid rgba(107, 56, 168, 0.45);
+  }
+  .badge-gray {
+    background: rgba(248, 240, 230, 0.08);
+    color: rgba(248, 240, 230, 0.55);
+    border: 1px solid rgba(248, 240, 230, 0.15);
   }
 
   /* Admin sidebar */
   .admin-sidebar {
-    background: #0f0202;
-    border-right: 1px solid rgba(212, 134, 10, 0.1);
+    background: #190606;
+    border-right: 1px solid rgba(228, 148, 12, 0.14);
     min-height: 100dvh;
   }
 
@@ -261,25 +264,26 @@
     border-collapse: collapse;
   }
   .cla-table th {
-    font-family: "Barlow Condensed", sans-serif;
-    font-weight: 600;
-    font-size: 0.8rem;
-    letter-spacing: 0.08em;
+    font-family: var(--font-heading), sans-serif;
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--cla-amber);
+    color: var(--cla-amber-light);
     padding: 0.75rem 1rem;
     text-align: left;
-    border-bottom: 1px solid rgba(212, 134, 10, 0.15);
+    background: rgba(228, 148, 12, 0.07);
+    border-bottom: 1px solid rgba(228, 148, 12, 0.2);
   }
   .cla-table td {
     padding: 0.875rem 1rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
     font-size: 0.9rem;
     color: var(--cla-off-white);
     vertical-align: middle;
   }
   .cla-table tr:hover td {
-    background: rgba(212, 134, 10, 0.04);
+    background: rgba(228, 148, 12, 0.06);
   }
 
   /* Progress bar */
@@ -300,7 +304,7 @@
     width: 20px;
     height: 20px;
     border: 2px solid rgba(26, 5, 5, 0.3);
-    border-top-color: #1a0505;
+    border-top-color: #200909;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -314,7 +318,7 @@
   .success-checkmark {
     width: 80px;
     height: 80px;
-    background: linear-gradient(135deg, #d4860a, #f0a500);
+    background: linear-gradient(135deg, #E89A10, #F8BA18);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -382,10 +386,10 @@
     background: var(--cla-bg-dark);
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(212, 134, 10, 0.3);
+    background: rgba(228, 148, 12, 0.4);
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(212, 134, 10, 0.5);
+    background: rgba(228, 148, 12, 0.65);
   }
 }

@@ -47,7 +47,7 @@ export function SlotPicker({ options, value, onChange, disabled }: SlotPickerPro
               style={{
                 borderColor: isSelected
                   ? "var(--cla-amber)"
-                  : "rgba(212,134,10,0.3)",
+                  : "rgba(228,148,12,0.3)",
                 background: isSelected ? "var(--cla-amber)" : "transparent",
               }}
             >
@@ -72,7 +72,7 @@ export function SlotPicker({ options, value, onChange, disabled }: SlotPickerPro
                       ? "#ff6b6b"
                       : pct >= 80
                       ? "var(--cla-amber)"
-                      : "rgba(232,224,216,0.6)",
+                      : "rgba(248,240,230,0.6)",
                   }}
                 >
                   {isFull

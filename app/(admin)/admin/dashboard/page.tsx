@@ -28,7 +28,7 @@ import { createClient } from "@/lib/supabase";
 
 interface DashboardStats {
   totalMembers: number;
-  attendanceToday: number;
+  neverAttended: number;
   attendanceThisWeek: number;
   classesAtCapacity: number;
   classesWithOpenSpots: number;
@@ -37,8 +37,8 @@ interface DashboardStats {
   attendanceTrend: { week: string; count: number }[];
 }
 
-const AMBER = "#D4860A";
-const AMBER_LIGHT = "#F0A500";
+const AMBER = "#E89A10";
+const AMBER_LIGHT = "#F8BA18";
 const YELLOW = "#C8D400";
 const PURPLE = "#5B2D8E";
 const WINE = "#8B1A1A";
@@ -51,8 +51,8 @@ function CustomTooltip({ active, payload, label }: any) {
       <div
         className="px-3 py-2 rounded-lg text-sm"
         style={{
-          background: "#2E0A0A",
-          border: "1px solid rgba(212,134,10,0.3)",
+          background: "#3e1212",
+          border: "1px solid rgba(228,148,12,0.3)",
           color: "var(--cla-off-white)",
         }}
       >
@@ -78,42 +78,34 @@ export default function DashboardPage() {
     async function fetchStats() {
       const supabase = createClient();
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const weekAgo = new Date(today);
+      const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
 
       const [
         { count: totalMembers },
-        { count: attendanceToday },
         { count: attendanceThisWeek },
         { data: classes },
         { data: slotRaw },
         { data: weeklyRaw },
+        { data: membersWithAttendance },
       ] = await Promise.all([
         supabase.from("members").select("*", { count: "exact", head: true }),
-        supabase
-          .from("attendance")
-          .select("*", { count: "exact", head: true })
-          .gte("attended_at", today.toISOString()),
         supabase
           .from("attendance")
           .select("*", { count: "exact", head: true })
           .gte("attended_at", weekAgo.toISOString()),
         supabase
           .from("classes")
-          .select(
-            "id, name, slot, capacity_max, members(count)"
-          )
+          .select("id, name, slot, capacity_max, members(count)")
           .eq("is_active", true)
           .order("name"),
-        supabase
-          .from("members")
-          .select("preferred_slot"),
+        supabase.from("members").select("preferred_slot"),
         supabase
           .from("attendance")
           .select("attended_at")
           .gte("attended_at", new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString()),
+        // Members who have at least one attendance record linked
+        supabase.from("attendance").select("member_id").not("member_id", "is", null),
       ]);
 
       // Process class fill data
@@ -168,9 +160,14 @@ export default function DashboardPage() {
         ([week, count]) => ({ week, count })
       );
 
+      const attendedMemberIds = new Set(
+        (membersWithAttendance ?? []).map((r: any) => r.member_id).filter(Boolean)
+      );
+      const neverAttended = Math.max(0, (totalMembers ?? 0) - attendedMemberIds.size);
+
       setStats({
         totalMembers: totalMembers ?? 0,
-        attendanceToday: attendanceToday ?? 0,
+        neverAttended,
         attendanceThisWeek: attendanceThisWeek ?? 0,
         classesAtCapacity,
         classesWithOpenSpots,
@@ -193,7 +190,7 @@ export default function DashboardPage() {
             width: 32,
             height: 32,
             borderTopColor: "var(--cla-amber)",
-            borderColor: "rgba(212,134,10,0.2)",
+            borderColor: "rgba(228,148,12,0.2)",
           }}
         />
       </div>
@@ -212,7 +209,7 @@ export default function DashboardPage() {
         >
           Dashboard
         </h1>
-        <p className="text-sm mt-0.5" style={{ color: "rgba(232,224,216,0.5)" }}>
+        <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.5)" }}>
           Overview of all discipleship activity
         </p>
       </div>
@@ -227,18 +224,18 @@ export default function DashboardPage() {
           icon={<Users size={20} style={{ color: "var(--cla-amber)" }} />}
         />
         <StatCard
-          label="Attended Today"
-          value={s.attendanceToday}
-          sub="this session"
-          accent="green"
-          icon={<ClipboardList size={20} style={{ color: "#C8D400" }} />}
+          label="Never Attended"
+          value={s.neverAttended}
+          sub="need follow-up"
+          accent="red"
+          icon={<ClipboardList size={20} style={{ color: "#ff6b6b" }} />}
         />
         <StatCard
           label="Classes Full"
           value={s.classesAtCapacity}
-          sub={`of 20 classes`}
-          accent="red"
-          icon={<AlertTriangle size={20} style={{ color: "#ff6b6b" }} />}
+          sub="of 20 classes"
+          accent="amber"
+          icon={<AlertTriangle size={20} style={{ color: "var(--cla-amber)" }} />}
         />
         <StatCard
           label="Open Classes"
@@ -267,12 +264,12 @@ export default function DashboardPage() {
               />
               <XAxis
                 dataKey="week"
-                stroke="rgba(232,224,216,0.3)"
-                tick={{ fill: "rgba(232,224,216,0.5)", fontSize: 12 }}
+                stroke="rgba(248,240,230,0.3)"
+                tick={{ fill: "rgba(248,240,230,0.5)", fontSize: 12 }}
               />
               <YAxis
-                stroke="rgba(232,224,216,0.3)"
-                tick={{ fill: "rgba(232,224,216,0.5)", fontSize: 12 }}
+                stroke="rgba(248,240,230,0.3)"
+                tick={{ fill: "rgba(248,240,230,0.5)", fontSize: 12 }}
               />
               <Tooltip content={<CustomTooltip />} />
               <Line
@@ -314,7 +311,7 @@ export default function DashboardPage() {
               <Tooltip content={<CustomTooltip />} />
               <Legend
                 formatter={(value) => (
-                  <span style={{ color: "rgba(232,224,216,0.7)", fontSize: 12 }}>
+                  <span style={{ color: "rgba(248,240,230,0.7)", fontSize: 12 }}>
                     {value}
                   </span>
                 )}
@@ -343,16 +340,16 @@ export default function DashboardPage() {
             />
             <XAxis
               dataKey="name"
-              stroke="rgba(232,224,216,0.3)"
-              tick={{ fill: "rgba(232,224,216,0.4)", fontSize: 10 }}
+              stroke="rgba(248,240,230,0.3)"
+              tick={{ fill: "rgba(248,240,230,0.4)", fontSize: 10 }}
               interval={0}
               angle={-45}
               textAnchor="end"
               height={50}
             />
             <YAxis
-              stroke="rgba(232,224,216,0.3)"
-              tick={{ fill: "rgba(232,224,216,0.5)", fontSize: 12 }}
+              stroke="rgba(248,240,230,0.3)"
+              tick={{ fill: "rgba(248,240,230,0.5)", fontSize: 12 }}
               domain={[0, 18]}
             />
             <Tooltip content={<CustomTooltip />} />
@@ -365,7 +362,7 @@ export default function DashboardPage() {
             <Bar
               dataKey="max"
               name="Capacity"
-              fill="rgba(212,134,10,0.15)"
+              fill="rgba(228,148,12,0.15)"
               radius={[3, 3, 0, 0]}
             />
           </BarChart>

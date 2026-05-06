@@ -78,7 +78,7 @@ export default function SettingsPage() {
         >
           Settings
         </h1>
-        <p className="text-sm mt-0.5" style={{ color: "rgba(232,224,216,0.5)" }}>
+        <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.5)" }}>
           Manage your admin account
         </p>
       </div>
@@ -88,7 +88,7 @@ export default function SettingsPage() {
         className="rounded-xl p-5"
         style={{
           background: "var(--cla-bg-card)",
-          border: "1px solid rgba(212,134,10,0.15)",
+          border: "1px solid rgba(228,148,12,0.15)",
         }}
       >
         <div className="flex items-center gap-3">
@@ -96,7 +96,7 @@ export default function SettingsPage() {
             className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-lg shrink-0"
             style={{
               fontFamily: "Barlow Condensed, sans-serif",
-              background: "rgba(212,134,10,0.15)",
+              background: "rgba(228,148,12,0.15)",
               color: "var(--cla-amber)",
             }}
           >
@@ -104,7 +104,7 @@ export default function SettingsPage() {
           </div>
           <div>
             <p className="font-bold">Administrator</p>
-            <p className="text-sm" style={{ color: "rgba(232,224,216,0.55)" }}>
+            <p className="text-sm" style={{ color: "rgba(248,240,230,0.55)" }}>
               {ADMIN_EMAIL}
             </p>
           </div>
@@ -130,12 +130,12 @@ export default function SettingsPage() {
         className="rounded-xl overflow-hidden"
         style={{
           background: "var(--cla-bg-card)",
-          border: "1px solid rgba(212,134,10,0.15)",
+          border: "1px solid rgba(228,148,12,0.15)",
         }}
       >
         <div
           className="px-5 py-4"
-          style={{ borderBottom: "1px solid rgba(212,134,10,0.1)" }}
+          style={{ borderBottom: "1px solid rgba(228,148,12,0.1)" }}
         >
           <h2
             className="text-lg font-bold flex items-center gap-2"
@@ -144,7 +144,7 @@ export default function SettingsPage() {
             <KeyRound size={18} style={{ color: "var(--cla-amber)" }} />
             Change Password
           </h2>
-          <p className="text-sm mt-0.5" style={{ color: "rgba(232,224,216,0.45)" }}>
+          <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
             Your current password is permanently replaced — the old one is
             erased from the database.
           </p>
@@ -168,7 +168,7 @@ export default function SettingsPage() {
               type="button"
               onClick={() => setShowCurrent((v) => !v)}
               className="absolute right-3 top-8 p-1"
-              style={{ color: "rgba(232,224,216,0.4)" }}
+              style={{ color: "rgba(248,240,230,0.4)" }}
               tabIndex={-1}
               aria-label="Toggle"
             >
@@ -177,7 +177,7 @@ export default function SettingsPage() {
           </div>
 
           <div
-            style={{ borderTop: "1px solid rgba(212,134,10,0.08)" }}
+            style={{ borderTop: "1px solid rgba(228,148,12,0.08)" }}
           />
 
           {/* New password */}
@@ -198,7 +198,7 @@ export default function SettingsPage() {
               type="button"
               onClick={() => setShowNew((v) => !v)}
               className="absolute right-3 top-8 p-1"
-              style={{ color: "rgba(232,224,216,0.4)" }}
+              style={{ color: "rgba(248,240,230,0.4)" }}
               tabIndex={-1}
               aria-label="Toggle"
             >
@@ -223,7 +223,7 @@ export default function SettingsPage() {
               type="button"
               onClick={() => setShowConfirm((v) => !v)}
               className="absolute right-3 top-8 p-1"
-              style={{ color: "rgba(232,224,216,0.4)" }}
+              style={{ color: "rgba(248,240,230,0.4)" }}
               tabIndex={-1}
               aria-label="Toggle"
             >

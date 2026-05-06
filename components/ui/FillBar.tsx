@@ -24,7 +24,7 @@ export function FillBar({ value, max, showLabel = false }: FillBarProps) {
       {showLabel && (
         <span
           className="text-xs font-mono shrink-0"
-          style={{ color: "rgba(232,224,216,0.5)", minWidth: "3.5rem", textAlign: "right" }}
+          style={{ color: "rgba(248,240,230,0.5)", minWidth: "3.5rem", textAlign: "right" }}
         >
           {value}/{max}
         </span>

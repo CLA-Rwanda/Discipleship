@@ -4,101 +4,104 @@ import { useState, useEffect } from "react";
 import { Search, Download } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase";
-import type { Member } from "@/lib/types";
 
-interface MemberWithClass extends Member {
-  class_name?: string;
-  facilitator_name?: string;
-  attendance_count: number;
+interface AttendanceRow {
+  id: string;
+  member_name: string;
+  service_slot: string;
+  attended_at: string;
+  class_name: string | null;
+  facilitator_name: string | null;
+  is_linked: boolean;
 }
 
-export default function MembersPage() {
-  const [members, setMembers] = useState<MemberWithClass[]>([]);
+export default function AttendancePage() {
+  const [rows, setRows] = useState<AttendanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filterSlot, setFilterSlot] = useState<string>("all");
+  const [filterSlot, setFilterSlot] = useState("all");
 
   useEffect(() => {
     const supabase = createClient();
-    Promise.all([
-      supabase
-        .from("members")
-        .select("*, classes(name, facilitators(full_name))")
-        .order("registered_at", { ascending: false }),
-      supabase
-        .from("attendance")
-        .select("member_id")
-        .not("member_id", "is", null),
-    ]).then(([{ data: memberData }, { data: attData }]) => {
-      const countById: Record<string, number> = {};
-      for (const r of attData ?? []) {
-        if (r.member_id) countById[r.member_id] = (countById[r.member_id] ?? 0) + 1;
-      }
-      const enriched = (memberData ?? []).map((m: any) => ({
-        ...m,
-        class_name: m.classes?.name,
-        facilitator_name: m.classes?.facilitators?.full_name,
-        attendance_count: countById[m.id] ?? 0,
-      }));
-      setMembers(enriched);
-      setLoading(false);
-    });
+    supabase
+      .from("attendance")
+      .select(`
+        id,
+        member_name,
+        service_slot,
+        attended_at,
+        member_id,
+        classes (
+          name,
+          facilitators ( full_name )
+        )
+      `)
+      .order("attended_at", { ascending: false })
+      .limit(500)
+      .then(({ data }) => {
+        setRows(
+          (data ?? []).map((r: any) => ({
+            id: r.id,
+            member_name: r.member_name,
+            service_slot: r.service_slot,
+            attended_at: r.attended_at,
+            class_name: r.classes?.name ?? null,
+            facilitator_name: r.classes?.facilitators?.full_name ?? null,
+            is_linked: !!r.member_id,
+          }))
+        );
+        setLoading(false);
+      });
   }, []);
 
-  const filtered = members.filter((m) => {
+  const filtered = rows.filter((r) => {
     const q = search.toLowerCase();
     const matchSearch =
       q === "" ||
-      m.full_name.toLowerCase().includes(q) ||
-      m.phone.includes(q) ||
-      (m.email ?? "").toLowerCase().includes(q);
-    const matchSlot = filterSlot === "all" || m.preferred_slot === filterSlot;
+      r.member_name.toLowerCase().includes(q) ||
+      (r.class_name ?? "").toLowerCase().includes(q) ||
+      (r.facilitator_name ?? "").toLowerCase().includes(q);
+    const matchSlot = filterSlot === "all" || r.service_slot === filterSlot;
     return matchSearch && matchSlot;
   });
 
   function exportCSV() {
-    const rows = [
-      ["Name", "Phone", "Email", "Slot", "Class", "Facilitator", "Attended", "Registered"],
-      ...filtered.map((m) => [
-        m.full_name,
-        m.phone,
-        m.email ?? "",
-        m.preferred_slot,
-        m.class_name ?? "",
-        m.facilitator_name ?? "",
-        m.attendance_count,
-        new Date(m.registered_at).toLocaleDateString(),
-      ]),
-    ];
-    const csv = rows.map((r) => r.join(",")).join("\n");
+    const header = ["Name", "Class", "Facilitator", "Slot", "Date", "Matched Member"];
+    const csvRows = filtered.map((r) => [
+      r.member_name,
+      r.class_name ?? "",
+      r.facilitator_name ?? "",
+      r.service_slot,
+      new Date(r.attended_at).toLocaleDateString("en-GB"),
+      r.is_linked ? "Yes" : "No",
+    ]);
+    const csv = [header, ...csvRows].map((row) => row.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "cla-members.csv";
+    a.download = "cla-attendance.csv";
     a.click();
     URL.revokeObjectURL(url);
   }
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
+      {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1
-            className="text-3xl font-extrabold"
-            style={{ fontFamily: "Barlow Condensed, sans-serif" }}
-          >
-            Members
+          <h1 className="text-3xl font-extrabold" style={{ fontFamily: "var(--font-heading)" }}>
+            Attendance Log
           </h1>
           <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.5)" }}>
-            {members.length} total registered members
+            {rows.length} records — who attended, which class, which facilitator
           </p>
         </div>
         <button
           onClick={exportCSV}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all"
           style={{
-            fontFamily: "Barlow Condensed, sans-serif",
+            fontFamily: "var(--font-heading)",
             background: "rgba(228,148,12,0.1)",
             color: "var(--cla-amber)",
             border: "1px solid rgba(228,148,12,0.2)",
@@ -119,7 +122,7 @@ export default function MembersPage() {
           />
           <input
             type="text"
-            placeholder="Search by name, phone, or email…"
+            placeholder="Search by name, class, or facilitator…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="cla-input pl-9 text-sm"
@@ -131,14 +134,13 @@ export default function MembersPage() {
             onClick={() => setFilterSlot(s)}
             className="px-3 py-2 rounded-full text-sm font-bold transition-all"
             style={{
-              fontFamily: "Barlow Condensed, sans-serif",
+              fontFamily: "var(--font-heading)",
               background:
                 filterSlot === s
                   ? "linear-gradient(135deg, #E89A10, #F8BA18)"
                   : "rgba(255,255,255,0.05)",
               color: filterSlot === s ? "#200909" : "rgba(248,240,230,0.6)",
-              border:
-                filterSlot === s ? "none" : "1px solid rgba(228,148,12,0.2)",
+              border: filterSlot === s ? "none" : "1px solid rgba(228,148,12,0.2)",
             }}
           >
             {s === "all" ? "All Slots" : s}
@@ -173,81 +175,60 @@ export default function MembersPage() {
                 <tr>
                   <th>#</th>
                   <th>Name</th>
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Slot</th>
                   <th>Class</th>
-                  <th>Attended</th>
-                  <th>Registered</th>
+                  <th>Facilitator</th>
+                  <th>Slot</th>
+                  <th>Date</th>
+                  <th>Linked</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={7}
                       className="text-center py-12"
                       style={{ color: "rgba(248,240,230,0.35)" }}
                     >
-                      No members found.
+                      No attendance records found.
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((m, idx) => (
-                    <tr key={m.id}>
-                      <td
-                        className="text-sm"
-                        style={{ color: "rgba(248,240,230,0.35)" }}
-                      >
+                  filtered.map((r, idx) => (
+                    <tr key={r.id}>
+                      <td className="text-sm" style={{ color: "rgba(248,240,230,0.35)" }}>
                         {idx + 1}
                       </td>
-                      <td className="font-semibold">{m.full_name}</td>
+                      <td className="font-semibold">{r.member_name}</td>
                       <td style={{ color: "rgba(248,240,230,0.7)" }}>
-                        {m.phone}
+                        {r.class_name ?? (
+                          <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>
+                        )}
                       </td>
-                      <td style={{ color: "rgba(248,240,230,0.55)" }}>
-                        {m.email ?? (
-                          <span style={{ color: "rgba(248,240,230,0.25)" }}>
-                            —
-                          </span>
+                      <td style={{ color: "rgba(248,240,230,0.6)" }}>
+                        {r.facilitator_name ?? (
+                          <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>
                         )}
                       </td>
                       <td>
-                        <SlotBadge slot={m.preferred_slot} />
+                        <SlotBadge slot={r.service_slot as any} />
                       </td>
-                      <td style={{ color: "rgba(248,240,230,0.7)" }}>
-                        {m.class_name ?? (
-                          <span style={{ color: "rgba(248,240,230,0.3)" }}>
-                            Unassigned
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        <span
-                          className="font-bold text-sm"
-                          style={{
-                            color: m.attendance_count === 0
-                              ? "rgba(248,240,230,0.25)"
-                              : m.attendance_count >= 8
-                              ? "#C8D400"
-                              : "var(--cla-amber)",
-                          }}
-                        >
-                          {m.attendance_count}
-                        </span>
-                        {m.attendance_count === 0 && (
-                          <span className="text-xs ml-1" style={{ color: "rgba(248,240,230,0.2)" }}>×</span>
-                        )}
-                      </td>
-                      <td
-                        className="text-sm"
-                        style={{ color: "rgba(248,240,230,0.5)" }}
-                      >
-                        {new Date(m.registered_at).toLocaleDateString("en-GB", {
+                      <td className="text-sm" style={{ color: "rgba(248,240,230,0.5)" }}>
+                        {new Date(r.attended_at).toLocaleDateString("en-GB", {
                           day: "numeric",
                           month: "short",
                           year: "numeric",
                         })}
+                      </td>
+                      <td>
+                        <span
+                          className="text-xs font-bold"
+                          style={{
+                            color: r.is_linked ? "#C8D400" : "rgba(248,240,230,0.25)",
+                          }}
+                        >
+                          {r.is_linked ? "Yes" : "No"}
+                        </span>
                       </td>
                     </tr>
                   ))
@@ -263,7 +244,7 @@ export default function MembersPage() {
                 color: "rgba(248,240,230,0.4)",
               }}
             >
-              Showing {filtered.length} of {members.length} members
+              Showing {filtered.length} of {rows.length} records
             </div>
           )}
         </div>

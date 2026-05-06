@@ -12,6 +12,8 @@ import {
   Settings,
   LogOut,
   ChevronRight,
+  BarChart2,
+  ClipboardList,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { CLALogo } from "@/components/ui/CLALogo";
@@ -20,8 +22,10 @@ const NAV_ITEMS = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/classes", label: "Classes", icon: BookOpen },
   { href: "/admin/members", label: "Members", icon: Users },
+  { href: "/admin/attendance", label: "Attendance", icon: ClipboardList },
   { href: "/admin/facilitators", label: "Facilitators", icon: GraduationCap },
   { href: "/admin/resources/manage", label: "Resources", icon: FileText },
+  { href: "/admin/reports", label: "Reports", icon: BarChart2 },
   { href: "/admin/access", label: "Access Control", icon: Shield },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
@@ -41,7 +45,7 @@ export function AdminSidebar() {
       {/* Logo */}
       <div
         className="px-5 py-4"
-        style={{ borderBottom: "1px solid rgba(212,134,10,0.1)" }}
+        style={{ borderBottom: "1px solid rgba(228,148,12,0.1)" }}
       >
         <CLALogo layout="inline" size="sm" />
       </div>
@@ -62,11 +66,11 @@ export function AdminSidebar() {
                 fontFamily: "Barlow Condensed, sans-serif",
                 fontSize: "0.95rem",
                 background: isActive
-                  ? "rgba(212,134,10,0.12)"
+                  ? "rgba(228,148,12,0.12)"
                   : "transparent",
                 color: isActive
                   ? "var(--cla-amber-light)"
-                  : "rgba(232,224,216,0.6)",
+                  : "rgba(248,240,230,0.6)",
                 borderLeft: isActive
                   ? "2px solid var(--cla-amber)"
                   : "2px solid transparent",
@@ -77,7 +81,7 @@ export function AdminSidebar() {
                 style={{
                   color: isActive
                     ? "var(--cla-amber)"
-                    : "rgba(232,224,216,0.4)",
+                    : "rgba(248,240,230,0.4)",
                 }}
               />
               {item.label}
@@ -94,13 +98,13 @@ export function AdminSidebar() {
       </nav>
 
       {/* Sign out */}
-      <div className="p-4" style={{ borderTop: "1px solid rgba(212,134,10,0.1)" }}>
+      <div className="p-4" style={{ borderTop: "1px solid rgba(228,148,12,0.1)" }}>
         <button
           onClick={handleSignOut}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-semibold transition-all"
           style={{
             fontFamily: "Barlow Condensed, sans-serif",
-            color: "rgba(232,224,216,0.45)",
+            color: "rgba(248,240,230,0.45)",
           }}
         >
           <LogOut size={18} />

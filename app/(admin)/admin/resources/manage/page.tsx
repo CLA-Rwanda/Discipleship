@@ -126,7 +126,7 @@ export default function ManageResourcesPage() {
           >
             Resources
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: "rgba(232,224,216,0.5)" }}>
+          <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.5)" }}>
             Manage public church resources
           </p>
         </div>
@@ -144,7 +144,7 @@ export default function ManageResourcesPage() {
               width: 28,
               height: 28,
               borderTopColor: "var(--cla-amber)",
-              borderColor: "rgba(212,134,10,0.2)",
+              borderColor: "rgba(228,148,12,0.2)",
             }}
           />
         </div>
@@ -153,7 +153,7 @@ export default function ManageResourcesPage() {
           className="rounded-xl overflow-hidden"
           style={{
             background: "var(--cla-bg-card)",
-            border: "1px solid rgba(212,134,10,0.15)",
+            border: "1px solid rgba(228,148,12,0.15)",
           }}
         >
           <table className="cla-table">
@@ -172,7 +172,7 @@ export default function ManageResourcesPage() {
                   <td
                     colSpan={5}
                     className="text-center py-12"
-                    style={{ color: "rgba(232,224,216,0.35)" }}
+                    style={{ color: "rgba(248,240,230,0.35)" }}
                   >
                     No resources yet.
                   </td>
@@ -185,7 +185,7 @@ export default function ManageResourcesPage() {
                       {r.description && (
                         <p
                           className="text-xs mt-0.5 line-clamp-1"
-                          style={{ color: "rgba(232,224,216,0.45)" }}
+                          style={{ color: "rgba(248,240,230,0.45)" }}
                         >
                           {r.description}
                         </p>
@@ -207,7 +207,7 @@ export default function ManageResourcesPage() {
                           Open
                         </a>
                       ) : (
-                        <span style={{ color: "rgba(232,224,216,0.25)" }}>—</span>
+                        <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>
                       )}
                     </td>
                     <td>
@@ -220,7 +220,7 @@ export default function ManageResourcesPage() {
                         <button
                           onClick={() => togglePublish(r)}
                           className="p-1.5 rounded-lg transition-all"
-                          style={{ color: "rgba(232,224,216,0.45)" }}
+                          style={{ color: "rgba(248,240,230,0.45)" }}
                           title={r.is_published ? "Unpublish" : "Publish"}
                         >
                           {r.is_published ? (
@@ -232,7 +232,7 @@ export default function ManageResourcesPage() {
                         <button
                           onClick={() => openEdit(r)}
                           className="p-1.5 rounded-lg transition-all"
-                          style={{ color: "rgba(232,224,216,0.45)" }}
+                          style={{ color: "rgba(248,240,230,0.45)" }}
                           title="Edit"
                         >
                           <Edit2 size={15} />

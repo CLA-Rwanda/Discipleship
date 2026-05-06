@@ -41,7 +41,7 @@ export function StatCard({
             className="text-xs font-bold uppercase tracking-widest mb-1"
             style={{
               fontFamily: "Barlow Condensed, sans-serif",
-              color: "rgba(232,224,216,0.55)",
+              color: "rgba(248,240,230,0.55)",
             }}
           >
             {label}
@@ -56,7 +56,7 @@ export function StatCard({
             {value}
           </p>
           {sub && (
-            <p className="text-xs mt-1" style={{ color: "rgba(232,224,216,0.5)" }}>
+            <p className="text-xs mt-1" style={{ color: "rgba(248,240,230,0.5)" }}>
               {sub}
             </p>
           )}
@@ -64,7 +64,7 @@ export function StatCard({
         {icon && (
           <div
             className="p-2.5 rounded-lg shrink-0"
-            style={{ background: "rgba(212,134,10,0.1)" }}
+            style={{ background: "rgba(228,148,12,0.1)" }}
           >
             {icon}
           </div>

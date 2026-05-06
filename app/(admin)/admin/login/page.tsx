@@ -128,7 +128,7 @@ export default function AdminLoginPage() {
             </h1>
             <p
               className="text-sm mt-1"
-              style={{ color: "rgba(232,224,216,0.5)" }}
+              style={{ color: "rgba(248,240,230,0.5)" }}
             >
               {view === "login"
                 ? "Sign in to manage discipleship classes"
@@ -144,7 +144,7 @@ export default function AdminLoginPage() {
               className="rounded-xl p-5 flex flex-col gap-4"
               style={{
                 background: "var(--cla-bg-card)",
-                border: "1px solid rgba(212,134,10,0.15)",
+                border: "1px solid rgba(228,148,12,0.15)",
               }}
             >
               <Input
@@ -175,7 +175,7 @@ export default function AdminLoginPage() {
                   type="button"
                   onClick={() => setShowLoginPw((v) => !v)}
                   className="absolute right-3 top-8 p-1"
-                  style={{ color: "rgba(232,224,216,0.4)" }}
+                  style={{ color: "rgba(248,240,230,0.4)" }}
                   tabIndex={-1}
                   aria-label="Toggle password visibility"
                 >
@@ -215,7 +215,7 @@ export default function AdminLoginPage() {
                 setLoginError("");
               }}
               className="text-sm text-center"
-              style={{ color: "rgba(232,224,216,0.4)" }}
+              style={{ color: "rgba(248,240,230,0.4)" }}
             >
               <span
                 className="hover:underline transition-colors"
@@ -234,7 +234,7 @@ export default function AdminLoginPage() {
               className="rounded-xl p-5 flex flex-col gap-5"
               style={{
                 background: "var(--cla-bg-card)",
-                border: "1px solid rgba(212,134,10,0.15)",
+                border: "1px solid rgba(228,148,12,0.15)",
               }}
             >
               {/* Current */}
@@ -254,7 +254,7 @@ export default function AdminLoginPage() {
                   type="button"
                   onClick={() => setShowCurrent((v) => !v)}
                   className="absolute right-3 top-8 p-1"
-                  style={{ color: "rgba(232,224,216,0.4)" }}
+                  style={{ color: "rgba(248,240,230,0.4)" }}
                   tabIndex={-1}
                   aria-label="Toggle"
                 >
@@ -263,7 +263,7 @@ export default function AdminLoginPage() {
               </div>
 
               <div
-                style={{ borderTop: "1px solid rgba(212,134,10,0.1)" }}
+                style={{ borderTop: "1px solid rgba(228,148,12,0.1)" }}
               />
 
               {/* New */}
@@ -284,7 +284,7 @@ export default function AdminLoginPage() {
                   type="button"
                   onClick={() => setShowNew((v) => !v)}
                   className="absolute right-3 top-8 p-1"
-                  style={{ color: "rgba(232,224,216,0.4)" }}
+                  style={{ color: "rgba(248,240,230,0.4)" }}
                   tabIndex={-1}
                   aria-label="Toggle"
                 >
@@ -354,7 +354,7 @@ export default function AdminLoginPage() {
                 setCpSuccess(false);
               }}
               className="flex items-center justify-center gap-1.5 text-sm"
-              style={{ color: "rgba(232,224,216,0.4)" }}
+              style={{ color: "rgba(248,240,230,0.4)" }}
             >
               <ArrowLeft size={14} />
               Back to Sign In
@@ -364,7 +364,7 @@ export default function AdminLoginPage() {
 
         <p
           className="text-center text-xs"
-          style={{ color: "rgba(232,224,216,0.25)" }}
+          style={{ color: "rgba(248,240,230,0.25)" }}
         >
           Only authorized CLA staff may access this area.
         </p>

@@ -76,7 +76,7 @@ export default function ResourcesPage() {
         className="grain-overlay relative overflow-hidden"
         style={{
           background:
-            "linear-gradient(135deg, #1A0505 0%, #2E0A0A 50%, #4A0A0A 100%)",
+            "linear-gradient(135deg, #200909 0%, #3e1212 50%, #5c1616 100%)",
           paddingTop: "env(safe-area-inset-top)",
         }}
       >
@@ -89,7 +89,7 @@ export default function ResourcesPage() {
             >
               Church <span className="text-amber-gradient">Resources</span>
             </h1>
-            <p className="mt-1 text-sm" style={{ color: "rgba(232,224,216,0.6)" }}>
+            <p className="mt-1 text-sm" style={{ color: "rgba(248,240,230,0.6)" }}>
               Bible studies, sermon notes, forms & more
             </p>
           </div>
@@ -102,7 +102,7 @@ export default function ResourcesPage() {
           <Search
             size={18}
             className="absolute left-3 top-1/2 -translate-y-1/2"
-            style={{ color: "rgba(232,224,216,0.4)" }}
+            style={{ color: "rgba(248,240,230,0.4)" }}
           />
           <input
             type="text"
@@ -125,12 +125,12 @@ export default function ResourcesPage() {
                 style={{
                   fontFamily: "Barlow Condensed, sans-serif",
                   background: isActive
-                    ? "linear-gradient(135deg, #D4860A, #F0A500)"
+                    ? "linear-gradient(135deg, #E89A10, #F8BA18)"
                     : "rgba(255,255,255,0.05)",
-                  color: isActive ? "#1A0505" : "rgba(232,224,216,0.7)",
+                  color: isActive ? "#200909" : "rgba(248,240,230,0.7)",
                   border: isActive
                     ? "none"
-                    : "1px solid rgba(212,134,10,0.2)",
+                    : "1px solid rgba(228,148,12,0.2)",
                 }}
               >
                 <cat.icon size={14} />
@@ -159,7 +159,7 @@ export default function ResourcesPage() {
             >
               No resources found
             </p>
-            <p className="text-sm" style={{ color: "rgba(232,224,216,0.45)" }}>
+            <p className="text-sm" style={{ color: "rgba(248,240,230,0.45)" }}>
               Try a different search term or category
             </p>
           </div>
@@ -172,7 +172,7 @@ export default function ResourcesPage() {
               >
                 <div
                   className="p-2.5 rounded-xl shrink-0 mt-0.5"
-                  style={{ background: "rgba(212,134,10,0.1)" }}
+                  style={{ background: "rgba(228,148,12,0.1)" }}
                 >
                   <ResourceIcon category={resource.category} />
                 </div>
@@ -194,7 +194,7 @@ export default function ResourcesPage() {
                   {resource.description && (
                     <p
                       className="text-sm mt-1 line-clamp-2"
-                      style={{ color: "rgba(232,224,216,0.6)" }}
+                      style={{ color: "rgba(248,240,230,0.6)" }}
                     >
                       {resource.description}
                     </p>
@@ -209,8 +209,8 @@ export default function ResourcesPage() {
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold transition-all"
                         style={{
                           fontFamily: "Barlow Condensed, sans-serif",
-                          background: "linear-gradient(135deg, #D4860A, #F0A500)",
-                          color: "#1A0505",
+                          background: "linear-gradient(135deg, #E89A10, #F8BA18)",
+                          color: "#200909",
                         }}
                       >
                         <ExternalLink size={14} />
@@ -224,7 +224,7 @@ export default function ResourcesPage() {
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border transition-all"
                         style={{
                           fontFamily: "Barlow Condensed, sans-serif",
-                          borderColor: "rgba(212,134,10,0.4)",
+                          borderColor: "rgba(228,148,12,0.4)",
                           color: "var(--cla-amber)",
                         }}
                       >

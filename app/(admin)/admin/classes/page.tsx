@@ -94,7 +94,7 @@ export default function ClassesPage() {
             width: 32,
             height: 32,
             borderTopColor: "var(--cla-amber)",
-            borderColor: "rgba(212,134,10,0.2)",
+            borderColor: "rgba(228,148,12,0.2)",
           }}
         />
       </div>
@@ -121,7 +121,7 @@ export default function ClassesPage() {
           >
             Classes
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: "rgba(232,224,216,0.5)" }}>
+          <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.5)" }}>
             {classes.length} active classes · {fullClasses.length} at capacity
           </p>
         </div>
@@ -137,11 +137,11 @@ export default function ClassesPage() {
                 fontFamily: "Barlow Condensed, sans-serif",
                 background:
                   filterSlot === s
-                    ? "linear-gradient(135deg, #D4860A, #F0A500)"
+                    ? "linear-gradient(135deg, #E89A10, #F8BA18)"
                     : "rgba(255,255,255,0.05)",
-                color: filterSlot === s ? "#1A0505" : "rgba(232,224,216,0.6)",
+                color: filterSlot === s ? "#200909" : "rgba(248,240,230,0.6)",
                 border:
-                  filterSlot === s ? "none" : "1px solid rgba(212,134,10,0.2)",
+                  filterSlot === s ? "none" : "1px solid rgba(228,148,12,0.2)",
               }}
             >
               {s === "all" ? "All" : s}
@@ -173,7 +173,7 @@ export default function ClassesPage() {
         className="rounded-xl overflow-hidden"
         style={{
           background: "var(--cla-bg-card)",
-          border: "1px solid rgba(212,134,10,0.15)",
+          border: "1px solid rgba(228,148,12,0.15)",
         }}
       >
         <div className="overflow-x-auto">
@@ -218,9 +218,9 @@ export default function ClassesPage() {
                     <td>
                       <SlotBadge slot={cls.slot} />
                     </td>
-                    <td style={{ color: "rgba(232,224,216,0.7)" }}>
+                    <td style={{ color: "rgba(248,240,230,0.7)" }}>
                       {cls.facilitator?.full_name ?? (
-                        <span style={{ color: "rgba(232,224,216,0.3)" }}>
+                        <span style={{ color: "rgba(248,240,230,0.3)" }}>
                           Unassigned
                         </span>
                       )}
@@ -238,7 +238,7 @@ export default function ClassesPage() {
                       >
                         {cls.member_count}
                       </span>
-                      <span style={{ color: "rgba(232,224,216,0.4)" }}>
+                      <span style={{ color: "rgba(248,240,230,0.4)" }}>
                         /{cls.capacity_max}
                       </span>
                     </td>
@@ -252,9 +252,9 @@ export default function ClassesPage() {
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
                           style={{
                             fontFamily: "Barlow Condensed, sans-serif",
-                            background: "rgba(212,134,10,0.1)",
+                            background: "rgba(228,148,12,0.1)",
                             color: "var(--cla-amber)",
-                            border: "1px solid rgba(212,134,10,0.2)",
+                            border: "1px solid rgba(228,148,12,0.2)",
                           }}
                         >
                           <Users size={12} />
@@ -281,7 +281,7 @@ export default function ClassesPage() {
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3 flex-wrap">
               <SlotBadge slot={rosterClass.slot} />
-              <span style={{ color: "rgba(232,224,216,0.5)", fontSize: "0.85rem" }}>
+              <span style={{ color: "rgba(248,240,230,0.5)", fontSize: "0.85rem" }}>
                 Facilitator: {rosterClass.facilitator?.full_name ?? "Unassigned"}
               </span>
               <span
@@ -301,7 +301,7 @@ export default function ClassesPage() {
             {rosterClass.members.length === 0 ? (
               <p
                 className="text-center py-8 text-sm"
-                style={{ color: "rgba(232,224,216,0.4)" }}
+                style={{ color: "rgba(248,240,230,0.4)" }}
               >
                 No members in this class yet.
               </p>
@@ -320,7 +320,7 @@ export default function ClassesPage() {
                       <p className="font-semibold text-sm">{member.full_name}</p>
                       <p
                         className="text-xs"
-                        style={{ color: "rgba(232,224,216,0.5)" }}
+                        style={{ color: "rgba(248,240,230,0.5)" }}
                       >
                         {member.phone}
                       </p>
@@ -361,14 +361,14 @@ export default function ClassesPage() {
             <div
               className="p-4 rounded-xl"
               style={{
-                background: "rgba(212,134,10,0.06)",
-                border: "1px solid rgba(212,134,10,0.15)",
+                background: "rgba(228,148,12,0.06)",
+                border: "1px solid rgba(228,148,12,0.15)",
               }}
             >
               <p className="font-bold">{moveState.member.full_name}</p>
               <p
                 className="text-sm"
-                style={{ color: "rgba(232,224,216,0.55)" }}
+                style={{ color: "rgba(248,240,230,0.55)" }}
               >
                 Currently in{" "}
                 <span style={{ color: "var(--cla-amber)" }}>
@@ -409,7 +409,7 @@ export default function ClassesPage() {
                 <ChevronDown
                   size={16}
                   className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                  style={{ color: "rgba(232,224,216,0.4)" }}
+                  style={{ color: "rgba(248,240,230,0.4)" }}
                 />
               </div>
             </div>

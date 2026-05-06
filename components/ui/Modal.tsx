@@ -41,7 +41,7 @@ export function Modal({
         {title && (
           <div
             className="flex items-center justify-between px-6 py-4"
-            style={{ borderBottom: "1px solid rgba(212,134,10,0.15)" }}
+            style={{ borderBottom: "1px solid rgba(228,148,12,0.15)" }}
           >
             <h2
               className="text-xl font-bold"
@@ -52,7 +52,7 @@ export function Modal({
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
-              style={{ color: "rgba(232,224,216,0.6)" }}
+              style={{ color: "rgba(248,240,230,0.6)" }}
             >
               <X size={18} />
             </button>
