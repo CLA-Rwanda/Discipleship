@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { SlotBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase";
+import { deleteFacilitator } from "@/actions/admin";
 import type { Facilitator, Slot } from "@/lib/types";
 
 interface FacilitatorWithClasses extends Facilitator {
@@ -46,6 +47,8 @@ export default function FacilitatorsPage() {
   >([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [activeSlotTab, setActiveSlotTab] = useState<Slot>("8am");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchFacilitators = useCallback(async () => {
     const supabase = createClient();
@@ -209,10 +212,13 @@ export default function FacilitatorsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Remove this facilitator? Their classes will become unassigned.")) return;
-    const supabase = createClient();
-    await supabase.from("facilitators").delete().eq("id", id);
-    fetchFacilitators();
+    setDeleting(true);
+    const result = await deleteFacilitator(id);
+    setDeleting(false);
+    if (result.success) {
+      setConfirmDeleteId(null);
+      fetchFacilitators();
+    }
   }
 
 
@@ -321,13 +327,35 @@ export default function FacilitatorsPage() {
                   <Edit2 size={16} />
                 </button>
 
-                <button
-                  onClick={() => handleDelete(f.id)}
-                  className="p-2 rounded-lg transition-all"
-                  style={{ color: "rgba(139,26,26,0.7)" }}
-                >
-                  <Trash2 size={16} />
-                </button>
+                {confirmDeleteId === f.id ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold" style={{ color: "#ff6b6b" }}>Delete?</span>
+                    <button
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="text-xs px-2 py-1 rounded"
+                      style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}
+                    >
+                      No
+                    </button>
+                    <button
+                      onClick={() => handleDelete(f.id)}
+                      disabled={deleting}
+                      className="text-xs px-2 py-1 rounded font-bold"
+                      style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}
+                    >
+                      {deleting ? "…" : "Yes, delete"}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDeleteId(f.id)}
+                    className="p-2 rounded-lg transition-all"
+                    style={{ color: "rgba(192,40,40,0.5)" }}
+                    title="Delete facilitator"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             </div>
           ))}

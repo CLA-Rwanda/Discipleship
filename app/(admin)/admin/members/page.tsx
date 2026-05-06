@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, Download } from "lucide-react";
+import { Search, Download, Trash2 } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase";
+import { deleteMember } from "@/actions/admin";
 import type { Member } from "@/lib/types";
 
 interface MemberWithClass extends Member {
@@ -17,6 +18,8 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterSlot, setFilterSlot] = useState<string>("all");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -55,6 +58,16 @@ export default function MembersPage() {
     const matchSlot = filterSlot === "all" || m.preferred_slot === filterSlot;
     return matchSearch && matchSlot;
   });
+
+  async function handleDeleteMember(id: string) {
+    setDeleting(true);
+    const result = await deleteMember(id);
+    setDeleting(false);
+    if (result.success) {
+      setMembers((prev) => prev.filter((m) => m.id !== id));
+      setConfirmDeleteId(null);
+    }
+  }
 
   function exportCSV() {
     const rows = [
@@ -179,13 +192,14 @@ export default function MembersPage() {
                   <th>Class</th>
                   <th>Attended</th>
                   <th>Registered</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={9}
                       className="text-center py-12"
                       style={{ color: "rgba(248,240,230,0.35)" }}
                     >
@@ -248,6 +262,39 @@ export default function MembersPage() {
                           month: "short",
                           year: "numeric",
                         })}
+                      </td>
+                      <td>
+                        {confirmDeleteId === m.id ? (
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <span className="text-xs font-bold" style={{ color: "#ff6b6b" }}>
+                              Delete?
+                            </span>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="text-xs px-2 py-1 rounded"
+                              style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}
+                            >
+                              No
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMember(m.id)}
+                              disabled={deleting}
+                              className="text-xs px-2 py-1 rounded font-bold"
+                              style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}
+                            >
+                              {deleting ? "…" : "Yes, delete"}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDeleteId(m.id)}
+                            className="p-1.5 rounded-lg transition-all"
+                            style={{ color: "rgba(192,40,40,0.5)" }}
+                            title="Delete member"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))

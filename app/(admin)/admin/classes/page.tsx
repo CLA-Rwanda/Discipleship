@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { AlertTriangle, ChevronDown, Edit2, MoveRight, Users } from "lucide-react";
+import { AlertTriangle, ChevronDown, Edit2, MoveRight, Trash2, Users } from "lucide-react";
 import { Badge, SlotBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { FillBar } from "@/components/ui/FillBar";
 import { createClient } from "@/lib/supabase";
+import { deleteClass } from "@/actions/admin";
 import type { Class, Member, Facilitator, Slot } from "@/lib/types";
 
 interface ClassWithDetails extends Omit<Class, "facilitator"> {
@@ -32,6 +33,8 @@ export default function ClassesPage() {
   const [targetClassId, setTargetClassId] = useState("");
   const [movingId, setMovingId] = useState<string | null>(null);
   const [filterSlot, setFilterSlot] = useState<Slot | "all">("all");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchClasses = useCallback(async () => {
     const supabase = createClient();
@@ -63,6 +66,16 @@ export default function ClassesPage() {
   useEffect(() => {
     fetchClasses();
   }, [fetchClasses]);
+
+  async function handleDeleteClass(id: string) {
+    setDeleting(true);
+    const result = await deleteClass(id);
+    setDeleting(false);
+    if (result.success) {
+      setClasses((prev) => prev.filter((c) => c.id !== id));
+      setConfirmDeleteId(null);
+    }
+  }
 
   async function handleMove() {
     if (!moveState || !targetClassId) return;
@@ -260,6 +273,35 @@ export default function ClassesPage() {
                           <Users size={12} />
                           Roster
                         </button>
+                        {confirmDeleteId === cls.id ? (
+                          <div className="flex items-center gap-1.5 whitespace-nowrap">
+                            <span className="text-xs font-bold" style={{ color: "#ff6b6b" }}>Sure?</span>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="text-xs px-2 py-1 rounded"
+                              style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}
+                            >
+                              No
+                            </button>
+                            <button
+                              onClick={() => handleDeleteClass(cls.id)}
+                              disabled={deleting}
+                              className="text-xs px-2 py-1 rounded font-bold"
+                              style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}
+                            >
+                              {deleting ? "…" : "Delete"}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDeleteId(cls.id)}
+                            className="p-1.5 rounded-lg transition-all"
+                            style={{ color: "rgba(192,40,40,0.5)" }}
+                            title="Delete class"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
