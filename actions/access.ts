@@ -2,7 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase-admin";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
-import { ADMIN_EMAIL } from "@/lib/config";
+import { ADMIN_EMAIL, getSiteUrl } from "@/lib/config";
 import type { AdminRole } from "@/lib/types";
 
 // Verify the current session user is the super admin
@@ -30,11 +30,9 @@ export async function inviteAdminUser(
 
     // Send invite email — Supabase creates the user and emails them a magic link.
     // We pass the role in user metadata so the DB trigger auto-assigns it.
-    const siteUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
     const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
       data: { invited_role: role },
-      redirectTo: `${siteUrl}/auth/callback?type=invite`,
+      redirectTo: `${getSiteUrl()}/auth/callback?type=invite`,
     });
 
     if (error) {
