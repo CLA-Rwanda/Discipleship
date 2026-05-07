@@ -16,7 +16,7 @@ export async function getClassesForAttendance(): Promise<ClassForAttendance[]> {
     .from("classes")
     .select("id, name, slot, facilitators(full_name)")
     .eq("is_active", true)
-    .order("slot")
+    .not("facilitator_id", "is", null)
     .order("name");
 
   return (data ?? []).map((c: any) => ({

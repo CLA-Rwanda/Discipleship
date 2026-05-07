@@ -19,6 +19,11 @@ export const metadata: Metadata = {
   title: "CLA Discipleship",
   description: "Christian Life Assembly — Discipleship & Attendance Management",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/cla-logo-icon.png",
+    shortcut: "/cla-logo-icon.png",
+    apple: "/cla-logo-icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
