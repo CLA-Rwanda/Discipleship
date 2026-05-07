@@ -14,6 +14,7 @@ import {
   ChevronRight,
   BarChart2,
   ClipboardList,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { CLALogo } from "@/components/ui/CLALogo";
@@ -30,7 +31,7 @@ const NAV_ITEMS = [
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
-export function AdminSidebar() {
+export function AdminSidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -44,10 +45,20 @@ export function AdminSidebar() {
     <aside className="admin-sidebar w-64 flex flex-col shrink-0">
       {/* Logo */}
       <div
-        className="px-5 py-4"
+        className="px-5 py-4 flex items-center justify-between"
         style={{ borderBottom: "1px solid rgba(228,148,12,0.1)" }}
       >
         <CLALogo layout="inline" size="sm" />
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden p-1.5 rounded-lg"
+            style={{ color: "rgba(248,240,230,0.5)" }}
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
+        )}
       </div>
 
       {/* Nav */}

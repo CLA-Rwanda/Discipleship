@@ -170,7 +170,7 @@ export default function AttendancePage() {
           }}
         >
           <div className="overflow-x-auto">
-            <table className="cla-table">
+            <table className="cla-table" style={{ minWidth: "620px" }}>
               <thead>
                 <tr>
                   <th>#</th>

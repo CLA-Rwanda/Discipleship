@@ -181,7 +181,7 @@ export default function MembersPage() {
           }}
         >
           <div className="overflow-x-auto">
-            <table className="cla-table">
+            <table className="cla-table" style={{ minWidth: "700px" }}>
               <thead>
                 <tr>
                   <th>#</th>

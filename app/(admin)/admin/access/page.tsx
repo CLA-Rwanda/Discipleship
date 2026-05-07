@@ -210,7 +210,8 @@ export default function AccessPage() {
             </button>
           </div>
 
-          <table className="cla-table">
+          <div className="overflow-x-auto">
+          <table className="cla-table" style={{ minWidth: "500px" }}>
             <thead>
               <tr>
                 <th>Email</th>
@@ -290,6 +291,7 @@ export default function AccessPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
