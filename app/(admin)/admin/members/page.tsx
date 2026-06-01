@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, Download, Trash2 } from "lucide-react";
+import { Search, Download, Trash2, ArrowUpDown } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase";
 import { deleteMember } from "@/actions/admin";
@@ -18,6 +18,7 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterSlot, setFilterSlot] = useState<string>("all");
+  const [sortByAttendance, setSortByAttendance] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -48,16 +49,20 @@ export default function MembersPage() {
     });
   }, []);
 
-  const filtered = members.filter((m) => {
-    const q = search.toLowerCase();
-    const matchSearch =
-      q === "" ||
-      m.full_name.toLowerCase().includes(q) ||
-      m.phone.includes(q) ||
-      (m.email ?? "").toLowerCase().includes(q);
-    const matchSlot = filterSlot === "all" || m.preferred_slot === filterSlot;
-    return matchSearch && matchSlot;
-  });
+  const filtered = members
+    .filter((m) => {
+      const q = search.toLowerCase();
+      const matchSearch =
+        q === "" ||
+        m.full_name.toLowerCase().includes(q) ||
+        m.phone.includes(q) ||
+        (m.email ?? "").toLowerCase().includes(q);
+      const matchSlot = filterSlot === "all" || m.preferred_slot === filterSlot;
+      return matchSearch && matchSlot;
+    })
+    .sort((a, b) =>
+      sortByAttendance ? b.attendance_count - a.attendance_count : 0
+    );
 
   async function handleDeleteMember(id: string) {
     setDeleting(true);
@@ -190,7 +195,15 @@ export default function MembersPage() {
                   <th>Email</th>
                   <th>Slot</th>
                   <th>Class</th>
-                  <th>Attended</th>
+                  <th>
+                    <button
+                      onClick={() => setSortByAttendance((v) => !v)}
+                      className="flex items-center gap-1 font-bold transition-colors"
+                      style={{ color: sortByAttendance ? "var(--cla-amber)" : "inherit" }}
+                    >
+                      Attended <ArrowUpDown size={11} />
+                    </button>
+                  </th>
                   <th>Registered</th>
                   <th></th>
                 </tr>
@@ -237,21 +250,37 @@ export default function MembersPage() {
                         )}
                       </td>
                       <td>
-                        <span
-                          className="font-bold text-sm"
-                          style={{
-                            color: m.attendance_count === 0
-                              ? "rgba(248,240,230,0.25)"
-                              : m.attendance_count >= 8
-                              ? "#C8D400"
-                              : "var(--cla-amber)",
-                          }}
-                        >
-                          {m.attendance_count}
-                        </span>
-                        {m.attendance_count === 0 && (
-                          <span className="text-xs ml-1" style={{ color: "rgba(248,240,230,0.2)" }}>×</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="font-bold text-sm tabular-nums"
+                            style={{
+                              color: m.attendance_count === 0
+                                ? "rgba(248,240,230,0.25)"
+                                : m.attendance_count >= 8
+                                ? "#C8D400"
+                                : "var(--cla-amber)",
+                              minWidth: 20,
+                            }}
+                          >
+                            {m.attendance_count}
+                          </span>
+                          {m.attendance_count > 0 && (
+                            <div
+                              className="rounded-full overflow-hidden"
+                              style={{ width: 48, height: 5, background: "rgba(255,255,255,0.07)", flexShrink: 0 }}
+                            >
+                              <div
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${Math.min((m.attendance_count / 8) * 100, 100)}%`,
+                                  background: m.attendance_count >= 8
+                                    ? "linear-gradient(90deg,#a8c000,#C8D400)"
+                                    : "linear-gradient(90deg,#E89A10,#F8BA18)",
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td
                         className="text-sm"
