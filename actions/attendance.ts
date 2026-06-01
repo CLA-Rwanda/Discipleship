@@ -3,6 +3,40 @@
 import { createAdminClient } from "@/lib/supabase-admin";
 import type { Slot } from "@/lib/types";
 
+export interface AdminAttendanceRow {
+  id: string;
+  member_name: string;
+  service_slot: string;
+  attended_at: string;
+  class_name: string | null;
+  facilitator_name: string | null;
+  is_linked: boolean;
+}
+
+export async function getAllAttendanceForAdmin(): Promise<AdminAttendanceRow[]> {
+  const admin = createAdminClient();
+  // Fetch in two pages of 5000 to handle large datasets without hitting row limits
+  const fetchPage = (from: number, to: number) =>
+    admin
+      .from("attendance")
+      .select("id, member_name, service_slot, attended_at, member_id, classes(name, facilitators(full_name))")
+      .order("attended_at", { ascending: false })
+      .range(from, to);
+
+  const [page1, page2] = await Promise.all([fetchPage(0, 4999), fetchPage(5000, 9999)]);
+
+  const raw = [...(page1.data ?? []), ...(page2.data ?? [])];
+  return raw.map((r: any) => ({
+    id: r.id,
+    member_name: r.member_name,
+    service_slot: r.service_slot,
+    attended_at: r.attended_at,
+    class_name: r.classes?.name ?? null,
+    facilitator_name: r.classes?.facilitators?.full_name ?? null,
+    is_linked: !!r.member_id,
+  }));
+}
+
 export interface ClassForAttendance {
   id: string;
   name: string;

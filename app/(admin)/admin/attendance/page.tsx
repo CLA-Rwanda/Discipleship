@@ -3,13 +3,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { Search, Download, GraduationCap, ClipboardList, Pencil, Trash2, Check, X } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
-import { createClient } from "@/lib/supabase";
 import {
   updateAttendanceName,
   deleteAttendanceRecord,
   renameAttendancePerson,
   deleteAttendancePerson,
 } from "@/actions/admin";
+import { getAllAttendanceForAdmin } from "@/actions/attendance";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,24 +100,10 @@ export default function AttendancePage() {
   const [deletingPerson, setDeletingPerson] = useState(false);
 
   useEffect(() => {
-    createClient()
-      .from("attendance")
-      .select(`id, member_name, service_slot, attended_at, member_id, classes(name, facilitators(full_name))`)
-      .order("attended_at", { ascending: false })
-      .then(({ data }) => {
-        setRows(
-          (data ?? []).map((r: any) => ({
-            id: r.id,
-            member_name: r.member_name,
-            service_slot: r.service_slot,
-            attended_at: r.attended_at,
-            class_name: r.classes?.name ?? null,
-            facilitator_name: r.classes?.facilitators?.full_name ?? null,
-            is_linked: !!r.member_id,
-          }))
-        );
-        setLoading(false);
-      });
+    getAllAttendanceForAdmin().then((data) => {
+      setRows(data);
+      setLoading(false);
+    });
   }, []);
 
   // ── Log tab ────────────────────────────────────────────────────────────────
