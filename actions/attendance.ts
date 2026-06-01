@@ -15,18 +15,25 @@ export interface AdminAttendanceRow {
 
 export async function getAllAttendanceForAdmin(): Promise<AdminAttendanceRow[]> {
   const admin = createAdminClient();
-  // Fetch in two pages of 5000 to handle large datasets without hitting row limits
-  const fetchPage = (from: number, to: number) =>
-    admin
+  const PAGE = 1000;
+  const all: any[] = [];
+  let from = 0;
+
+  // Paginate in chunks of 1000 until the page comes back short (end of data)
+  while (true) {
+    const { data, error } = await admin
       .from("attendance")
       .select("id, member_name, service_slot, attended_at, member_id, classes(name, facilitators(full_name))")
       .order("attended_at", { ascending: false })
-      .range(from, to);
+      .range(from, from + PAGE - 1);
 
-  const [page1, page2] = await Promise.all([fetchPage(0, 4999), fetchPage(5000, 9999)]);
+    if (error || !data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
 
-  const raw = [...(page1.data ?? []), ...(page2.data ?? [])];
-  return raw.map((r: any) => ({
+  return all.map((r: any) => ({
     id: r.id,
     member_name: r.member_name,
     service_slot: r.service_slot,
