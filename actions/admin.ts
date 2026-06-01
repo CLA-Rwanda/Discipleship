@@ -65,6 +65,76 @@ export async function deleteFacilitator(
   }
 }
 
+// ── Attendance record actions ────────────────────────────────────────────────
+
+export async function updateAttendanceName(
+  id: string,
+  newName: string
+): Promise<{ success: boolean; error?: string }> {
+  await assertAdmin();
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("attendance")
+    .update({ member_name: newName.trim() })
+    .eq("id", id);
+  return error ? { success: false, error: error.message } : { success: true };
+}
+
+export async function deleteAttendanceRecord(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  await assertAdmin();
+  const admin = createAdminClient();
+  const { error } = await admin.from("attendance").delete().eq("id", id);
+  return error ? { success: false, error: error.message } : { success: true };
+}
+
+function normName(s: string) {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export async function renameAttendancePerson(
+  normKey: string,
+  newName: string
+): Promise<{ success: boolean; error?: string }> {
+  await assertAdmin();
+  const admin = createAdminClient();
+  // Fetch all ids matching this normalised name key
+  const { data, error: fetchErr } = await admin
+    .from("attendance")
+    .select("id, member_name");
+  if (fetchErr) return { success: false, error: fetchErr.message };
+  const ids = (data ?? [])
+    .filter((r: any) => normName(r.member_name) === normKey)
+    .map((r: any) => r.id);
+  if (ids.length === 0) return { success: true };
+  const { error } = await admin
+    .from("attendance")
+    .update({ member_name: newName.trim() })
+    .in("id", ids);
+  return error ? { success: false, error: error.message } : { success: true };
+}
+
+export async function deleteAttendancePerson(
+  normKey: string
+): Promise<{ success: boolean; error?: string }> {
+  await assertAdmin();
+  const admin = createAdminClient();
+  const { data, error: fetchErr } = await admin
+    .from("attendance")
+    .select("id, member_name");
+  if (fetchErr) return { success: false, error: fetchErr.message };
+  const ids = (data ?? [])
+    .filter((r: any) => normName(r.member_name) === normKey)
+    .map((r: any) => r.id);
+  if (ids.length === 0) return { success: true };
+  const { error } = await admin
+    .from("attendance")
+    .delete()
+    .in("id", ids);
+  return error ? { success: false, error: error.message } : { success: true };
+}
+
 export async function eraseAllData(): Promise<{ success: boolean; error?: string }> {
   try {
     await assertSuperAdmin();
