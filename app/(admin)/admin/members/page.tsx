@@ -21,6 +21,7 @@ export default function MembersPage() {
   const [sortByAttendance, setSortByAttendance] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [gradThreshold, setGradThreshold] = useState(16);
 
   useEffect(() => {
     const supabase = createClient();
@@ -33,7 +34,16 @@ export default function MembersPage() {
         .from("attendance")
         .select("member_id")
         .not("member_id", "is", null),
-    ]).then(([{ data: memberData }, { data: attData }]) => {
+      supabase
+        .from("app_settings")
+        .select("key, value"),
+    ]).then(([{ data: memberData }, { data: attData }, { data: settingsData }]) => {
+      const settingsMap: Record<string, string> = {};
+      for (const row of settingsData ?? []) settingsMap[row.key] = row.value;
+      const totalSessions = parseInt(settingsMap.total_sessions) || 21;
+      const thresholdPct = parseInt(settingsMap.attendance_threshold_pct) || 75;
+      setGradThreshold(Math.ceil((totalSessions * thresholdPct) / 100));
+
       const countById: Record<string, number> = {};
       for (const r of attData ?? []) {
         if (r.member_id) countById[r.member_id] = (countById[r.member_id] ?? 0) + 1;
@@ -261,7 +271,7 @@ export default function MembersPage() {
                             style={{
                               color: m.attendance_count === 0
                                 ? "rgba(248,240,230,0.25)"
-                                : m.attendance_count >= 8
+                                : m.attendance_count >= gradThreshold
                                 ? "#C8D400"
                                 : "var(--cla-amber)",
                               minWidth: 20,
@@ -277,8 +287,8 @@ export default function MembersPage() {
                               <div
                                 className="h-full rounded-full"
                                 style={{
-                                  width: `${Math.min((m.attendance_count / 8) * 100, 100)}%`,
-                                  background: m.attendance_count >= 8
+                                  width: `${Math.min((m.attendance_count / gradThreshold) * 100, 100)}%`,
+                                  background: m.attendance_count >= gradThreshold
                                     ? "linear-gradient(90deg,#a8c000,#C8D400)"
                                     : "linear-gradient(90deg,#E89A10,#F8BA18)",
                                 }}

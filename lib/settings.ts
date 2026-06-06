@@ -11,7 +11,7 @@ const DEFAULTS: AppSettings = {
   total_sessions: 21,
   attendance_threshold_pct: 75,
   max_members_per_class: 15,
-  max_classes: 16,
+  max_classes: 32,
 };
 
 export async function getAppSettings(): Promise<AppSettings> {

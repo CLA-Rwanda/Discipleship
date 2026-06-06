@@ -87,30 +87,30 @@ INSERT INTO app_settings (key, value) VALUES
   ('total_sessions',          '21'),
   ('attendance_threshold_pct','75'),
   ('max_members_per_class',   '15'),
-  ('max_classes',             '16')
+  ('max_classes',             '32')
 ON CONFLICT (key) DO NOTHING;
 
 -- ============================================================
--- SEED: 16 CLASSES (8am: 1–8, 10am: 9–16)
+-- SEED: 32 CLASSES (Class 01-16 at both 8am and 10am)
 -- ============================================================
 
 INSERT INTO classes (name, slot, capacity_min, capacity_max) VALUES
-  ('Class 01', '8am',  15, 15),
-  ('Class 02', '8am',  15, 15),
-  ('Class 03', '8am',  15, 15),
-  ('Class 04', '8am',  15, 15),
-  ('Class 05', '8am',  15, 15),
-  ('Class 06', '8am',  15, 15),
-  ('Class 07', '8am',  15, 15),
-  ('Class 08', '8am',  15, 15),
-  ('Class 09', '10am', 15, 15),
-  ('Class 10', '10am', 15, 15),
-  ('Class 11', '10am', 15, 15),
-  ('Class 12', '10am', 15, 15),
-  ('Class 13', '10am', 15, 15),
-  ('Class 14', '10am', 15, 15),
-  ('Class 15', '10am', 15, 15),
-  ('Class 16', '10am', 15, 15)
+  ('Class 01', '8am',  15, 15), ('Class 01', '10am', 15, 15),
+  ('Class 02', '8am',  15, 15), ('Class 02', '10am', 15, 15),
+  ('Class 03', '8am',  15, 15), ('Class 03', '10am', 15, 15),
+  ('Class 04', '8am',  15, 15), ('Class 04', '10am', 15, 15),
+  ('Class 05', '8am',  15, 15), ('Class 05', '10am', 15, 15),
+  ('Class 06', '8am',  15, 15), ('Class 06', '10am', 15, 15),
+  ('Class 07', '8am',  15, 15), ('Class 07', '10am', 15, 15),
+  ('Class 08', '8am',  15, 15), ('Class 08', '10am', 15, 15),
+  ('Class 09', '8am',  15, 15), ('Class 09', '10am', 15, 15),
+  ('Class 10', '8am',  15, 15), ('Class 10', '10am', 15, 15),
+  ('Class 11', '8am',  15, 15), ('Class 11', '10am', 15, 15),
+  ('Class 12', '8am',  15, 15), ('Class 12', '10am', 15, 15),
+  ('Class 13', '8am',  15, 15), ('Class 13', '10am', 15, 15),
+  ('Class 14', '8am',  15, 15), ('Class 14', '10am', 15, 15),
+  ('Class 15', '8am',  15, 15), ('Class 15', '10am', 15, 15),
+  ('Class 16', '8am',  15, 15), ('Class 16', '10am', 15, 15)
 ON CONFLICT DO NOTHING;
 
 -- ============================================================

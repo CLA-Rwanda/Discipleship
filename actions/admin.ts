@@ -39,9 +39,24 @@ export async function deleteClass(
   try {
     await assertAdmin();
     const admin = createAdminClient();
-    // Unassign members before deleting the class
     await admin.from("members").update({ class_id: null }).eq("class_id", id);
     const { error } = await admin.from("classes").delete().eq("id", id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function bulkDeleteClasses(
+  ids: string[]
+): Promise<{ success: boolean; error?: string }> {
+  if (ids.length === 0) return { success: true };
+  try {
+    await assertAdmin();
+    const admin = createAdminClient();
+    await admin.from("members").update({ class_id: null }).in("class_id", ids);
+    const { error } = await admin.from("classes").delete().in("id", ids);
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err: any) {

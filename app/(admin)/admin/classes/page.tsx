@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, ChevronDown, Download, MoveRight, Plus, Trash2, Users } from "lucide-react";
-import { Badge, SlotBadge } from "@/components/ui/Badge";
+import { SlotBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { FillBar } from "@/components/ui/FillBar";
 import { createClient } from "@/lib/supabase";
-import { deleteClass } from "@/actions/admin";
+import { deleteClass, bulkDeleteClasses } from "@/actions/admin";
 import { getAppSettings } from "@/actions/settings";
 import type { Class, Member, Facilitator } from "@/lib/types";
 
@@ -35,6 +35,9 @@ export default function ClassesPage() {
   const [filterSlot, setFilterSlot]     = useState<string>("all");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting]         = useState(false);
+  const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmBulk, setConfirmBulk]   = useState(false);
 
   // Add class modal
   const [addOpen, setAddOpen]           = useState(false);
@@ -80,6 +83,34 @@ export default function ClassesPage() {
     if (result.success) {
       setClasses((prev) => prev.filter((c) => c.id !== id));
       setConfirmDeleteId(null);
+    }
+  }
+
+  async function handleBulkDelete() {
+    setBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    const result = await bulkDeleteClasses(ids);
+    setBulkDeleting(false);
+    if (result.success) {
+      setClasses((prev) => prev.filter((c) => !selectedIds.has(c.id)));
+      setSelectedIds(new Set());
+      setConfirmBulk(false);
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((c) => c.id)));
     }
   }
 
@@ -193,6 +224,37 @@ export default function ClassesPage() {
         </div>
       </div>
 
+      {/* Bulk delete bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: "rgba(192,40,40,0.12)", border: "1px solid rgba(192,40,40,0.3)" }}>
+          <span className="text-sm font-bold" style={{ color: "#ff6b6b" }}>
+            {selectedIds.size} class{selectedIds.size > 1 ? "es" : ""} selected
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => setSelectedIds(new Set())} className="text-xs px-3 py-1.5 rounded-lg"
+              style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>
+              Cancel
+            </button>
+            {confirmBulk ? (
+              <>
+                <span className="text-xs font-bold" style={{ color: "#ff6b6b" }}>Delete {selectedIds.size} classes?</span>
+                <button onClick={() => setConfirmBulk(false)} className="text-xs px-3 py-1.5 rounded-lg"
+                  style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>No</button>
+                <button onClick={handleBulkDelete} disabled={bulkDeleting} className="text-xs px-3 py-1.5 rounded-lg font-bold"
+                  style={{ background: "rgba(192,40,40,0.3)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.5)" }}>
+                  {bulkDeleting ? "Deleting…" : "Yes, delete all"}
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setConfirmBulk(true)} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-bold"
+                style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
+                <Trash2 size={12} /> Delete selected
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Cap warning */}
       {atCap && (
         <div className="flex items-start gap-3 p-4 rounded-xl" style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.25)" }}>
@@ -219,6 +281,13 @@ export default function ClassesPage() {
           <table className="cla-table" style={{ minWidth: "560px" }}>
             <thead>
               <tr>
+                <th style={{ width: 36 }}>
+                  <input type="checkbox"
+                    checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                    onChange={toggleSelectAll}
+                    style={{ accentColor: "var(--cla-amber)", cursor: "pointer" }}
+                  />
+                </th>
                 <th>Class</th><th>Slot</th><th>Facilitator</th><th>Members</th><th>Fill</th><th>Actions</th>
               </tr>
             </thead>
@@ -227,8 +296,13 @@ export default function ClassesPage() {
                 const pct       = (cls.member_count / cls.capacity_max) * 100;
                 const isFull    = cls.member_count >= cls.capacity_max;
                 const isWarning = pct >= 80 && !isFull;
+                const isChecked = selectedIds.has(cls.id);
                 return (
-                  <tr key={cls.id}>
+                  <tr key={cls.id} style={isChecked ? { background: "rgba(192,40,40,0.06)" } : undefined}>
+                    <td>
+                      <input type="checkbox" checked={isChecked} onChange={() => toggleSelect(cls.id)}
+                        style={{ accentColor: "var(--cla-amber)", cursor: "pointer" }} />
+                    </td>
                     <td>
                       <span className="font-bold">{cls.name}</span>
                       {isFull    && <span className="ml-2 text-xs font-bold" style={{ color: "#ff4444" }}>FULL</span>}

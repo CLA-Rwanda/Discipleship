@@ -17,7 +17,7 @@ INSERT INTO app_settings (key, value) VALUES
   ('total_sessions',           '21'),
   ('attendance_threshold_pct', '75'),
   ('max_members_per_class',    '15'),
-  ('max_classes',              '16')
+  ('max_classes',              '32')
 ON CONFLICT (key) DO NOTHING;
 
 -- RLS: anyone can read; only authenticated admins can write
