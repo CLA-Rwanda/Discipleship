@@ -5,7 +5,8 @@ import { createAdminClient } from "@/lib/supabase-admin";
 export interface DuplicateCheckResult {
   isDuplicate: boolean;
   member?: {
-    full_name: string;
+    first_name: string;
+    last_name: string;
     class_name?: string;
     slot?: string;
   };
@@ -22,13 +23,7 @@ export async function checkPhoneDuplicate(
 
   const { data } = await supabase
     .from("members")
-    .select(
-      `
-      full_name,
-      preferred_slot,
-      classes(name)
-    `
-    )
+    .select("first_name, last_name, preferred_slot, classes(name)")
     .eq("phone", phone.trim())
     .maybeSingle();
 
@@ -37,9 +32,10 @@ export async function checkPhoneDuplicate(
   return {
     isDuplicate: true,
     member: {
-      full_name: data.full_name,
+      first_name: data.first_name,
+      last_name:  data.last_name,
       class_name: (data.classes as any)?.name,
-      slot: data.preferred_slot,
+      slot:       data.preferred_slot,
     },
   };
 }

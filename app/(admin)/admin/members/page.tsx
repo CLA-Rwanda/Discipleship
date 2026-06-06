@@ -49,12 +49,16 @@ export default function MembersPage() {
     });
   }, []);
 
+  // Dynamic slot list derived from loaded data
+  const slots = [...new Set(members.map((m) => m.preferred_slot))].sort();
+
   const filtered = members
     .filter((m) => {
       const q = search.toLowerCase();
+      const fullName = `${m.first_name} ${m.last_name}`.toLowerCase();
       const matchSearch =
         q === "" ||
-        m.full_name.toLowerCase().includes(q) ||
+        fullName.includes(q) ||
         m.phone.includes(q) ||
         (m.email ?? "").toLowerCase().includes(q);
       const matchSlot = filterSlot === "all" || m.preferred_slot === filterSlot;
@@ -76,9 +80,10 @@ export default function MembersPage() {
 
   function exportCSV() {
     const rows = [
-      ["Name", "Phone", "Email", "Slot", "Class", "Facilitator", "Attended", "Registered"],
+      ["First Name", "Last Name", "Phone", "Email", "Slot", "Class", "Facilitator", "Attended", "Registered"],
       ...filtered.map((m) => [
-        m.full_name,
+        m.first_name,
+        m.last_name,
         m.phone,
         m.email ?? "",
         m.preferred_slot,
@@ -143,7 +148,7 @@ export default function MembersPage() {
             className="cla-input pl-9 text-sm"
           />
         </div>
-        {["all", "8am", "10am", "12pm"].map((s) => (
+        {["all", ...slots].map((s) => (
           <button
             key={s}
             onClick={() => setFilterSlot(s)}
@@ -159,7 +164,7 @@ export default function MembersPage() {
                 filterSlot === s ? "none" : "1px solid rgba(228,148,12,0.2)",
             }}
           >
-            {s === "all" ? "All Slots" : s}
+            {s === "all" ? "All Slots" : s.toUpperCase()}
           </button>
         ))}
       </div>
@@ -228,7 +233,7 @@ export default function MembersPage() {
                       >
                         {idx + 1}
                       </td>
-                      <td className="font-semibold">{m.full_name}</td>
+                      <td className="font-semibold">{m.first_name} {m.last_name}</td>
                       <td style={{ color: "rgba(248,240,230,0.7)" }}>
                         {m.phone}
                       </td>

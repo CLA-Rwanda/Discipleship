@@ -14,6 +14,7 @@ import {
   ChevronRight,
   BarChart2,
   ClipboardList,
+  Target,
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { href: "/admin/classes", label: "Classes", icon: BookOpen },
   { href: "/admin/members", label: "Members", icon: Users },
   { href: "/admin/attendance", label: "Attendance", icon: ClipboardList },
+  { href: "/admin/missions", label: "Missions", icon: Target },
   { href: "/admin/facilitators", label: "Facilitators", icon: GraduationCap },
   { href: "/admin/resources/manage", label: "Resources", icon: FileText },
   { href: "/admin/reports", label: "Reports", icon: BarChart2 },

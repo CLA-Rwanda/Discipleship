@@ -1,7 +1,6 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase-admin";
-import type { Slot } from "@/lib/types";
 
 export interface AdminAttendanceRow {
   id: string;
@@ -19,7 +18,6 @@ export async function getAllAttendanceForAdmin(): Promise<AdminAttendanceRow[]> 
   const all: any[] = [];
   let from = 0;
 
-  // Paginate in chunks of 1000 until the page comes back short (end of data)
   while (true) {
     const { data, error } = await admin
       .from("attendance")
@@ -34,20 +32,20 @@ export async function getAllAttendanceForAdmin(): Promise<AdminAttendanceRow[]> 
   }
 
   return all.map((r: any) => ({
-    id: r.id,
-    member_name: r.member_name,
-    service_slot: r.service_slot,
-    attended_at: r.attended_at,
-    class_name: r.classes?.name ?? null,
+    id:               r.id,
+    member_name:      r.member_name,
+    service_slot:     r.service_slot,
+    attended_at:      r.attended_at,
+    class_name:       r.classes?.name ?? null,
     facilitator_name: r.classes?.facilitators?.full_name ?? null,
-    is_linked: !!r.member_id,
+    is_linked:        !!r.member_id,
   }));
 }
 
 export interface ClassForAttendance {
   id: string;
   name: string;
-  slot: Slot;
+  slot: string;
   facilitator_name: string | null;
 }
 
@@ -61,17 +59,41 @@ export async function getClassesForAttendance(): Promise<ClassForAttendance[]> {
     .order("name");
 
   return (data ?? []).map((c: any) => ({
-    id: c.id,
-    name: c.name,
-    slot: c.slot,
+    id:               c.id,
+    name:             c.name,
+    slot:             c.slot,
     facilitator_name: c.facilitators?.full_name ?? null,
   }));
 }
 
+export async function getDistinctSlots(): Promise<string[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("classes")
+    .select("slot")
+    .eq("is_active", true);
+
+  const slots = [...new Set((data ?? []).map((c: any) => c.slot as string))].sort();
+  return slots;
+}
+
+export type AttendanceNameMatch =
+  | { match_type: "exact"; member_id: string }
+  | { match_type: "reversed" | "fuzzy"; suggestion: string }
+  | { match_type: "none" };
+
+export type AttendanceSubmitResult =
+  | { success: true; slot: string; class_name: string; linked: boolean }
+  | { success: false; error: string }
+  | { needsSuggestion: true; suggestion: string; matchType: "reversed" | "fuzzy" };
+
 export async function logAttendance(formData: {
-  member_name: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
   class_id: string;
-}): Promise<{ success: boolean; slot?: Slot; class_name?: string; error?: string }> {
+  forceAnonymous?: boolean;
+}): Promise<AttendanceSubmitResult> {
   const admin = createAdminClient();
 
   const { data: cls, error: clsErr } = await admin
@@ -80,26 +102,43 @@ export async function logAttendance(formData: {
     .eq("id", formData.class_id)
     .single();
 
-  if (clsErr || !cls) {
-    return { success: false, error: "Class not found." };
+  if (clsErr || !cls) return { success: false, error: "Class not found." };
+
+  const memberName = `${formData.first_name.trim()} ${formData.last_name.trim()}`;
+  let memberId: string | null = null;
+
+  if (!formData.forceAnonymous) {
+    const { data: matchResult, error: matchErr } = await admin.rpc("match_attendance_name", {
+      p_first_name: formData.first_name.trim(),
+      p_last_name:  formData.last_name.trim(),
+      p_class_id:   formData.class_id,
+    });
+
+    if (!matchErr && matchResult) {
+      const match = matchResult as AttendanceNameMatch;
+
+      if (match.match_type === "exact") {
+        memberId = match.member_id;
+      } else if (match.match_type === "reversed" || match.match_type === "fuzzy") {
+        return {
+          needsSuggestion: true,
+          suggestion: match.suggestion,
+          matchType: match.match_type,
+        };
+      }
+      // match_type === 'none' → anonymous, memberId stays null
+    }
   }
 
-  // Auto-link to a registered member in that class by exact name (case-insensitive)
-  const { data: memberMatch } = await admin
-    .from("members")
-    .select("id")
-    .eq("class_id", formData.class_id)
-    .ilike("full_name", formData.member_name.trim())
-    .maybeSingle();
-
   const { error } = await admin.from("attendance").insert({
-    member_name: formData.member_name.trim(),
-    class_id: formData.class_id,
+    member_name:  memberName,
+    phone:        formData.phone.trim() || null,
+    class_id:     formData.class_id,
     service_slot: cls.slot,
-    attended_at: new Date().toISOString(),
-    member_id: memberMatch?.id ?? null,
+    attended_at:  new Date().toISOString(),
+    member_id:    memberId,
   });
 
   if (error) return { success: false, error: error.message };
-  return { success: true, slot: cls.slot, class_name: cls.name };
+  return { success: true, slot: cls.slot, class_name: cls.name, linked: !!memberId };
 }

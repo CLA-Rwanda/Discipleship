@@ -1,63 +1,60 @@
 "use server";
 
 import { createServerSupabaseClient } from "@/lib/supabase-server";
-import type { Slot } from "@/lib/types";
 
 export interface RegistrationResult {
   success: boolean;
   error?: string;
   member?: {
-    full_name: string;
+    first_name: string;
+    last_name: string;
     class_name: string;
     slot: string;
     facilitator_name?: string;
   };
   alternativeSlots?: Array<{
-    slot: Slot;
+    slot: string;
     remaining: number;
     total: number;
   }>;
 }
 
 export async function registerMember(formData: {
-  full_name: string;
+  first_name: string;
+  last_name: string;
   phone: string;
   email?: string;
-  preferred_slot: Slot;
+  preferred_slot: string;
 }): Promise<RegistrationResult> {
   const supabase = createServerSupabaseClient();
 
-  // Use RPC to atomically assign a class
   const { data, error } = await supabase.rpc("assign_member_to_class", {
-    p_full_name: formData.full_name,
-    p_phone: formData.phone,
-    p_email: formData.email || null,
+    p_first_name:     formData.first_name.trim(),
+    p_last_name:      formData.last_name.trim(),
+    p_phone:          formData.phone.trim(),
+    p_email:          formData.email?.trim() || null,
     p_preferred_slot: formData.preferred_slot,
   });
 
-  if (error) {
-    return { success: false, error: error.message };
-  }
-
-  if (!data) {
-    return { success: false, error: "An unexpected error occurred." };
-  }
+  if (error) return { success: false, error: error.message };
+  if (!data)  return { success: false, error: "An unexpected error occurred." };
 
   const result = data as {
     status: string;
     class_name?: string;
     slot?: string;
     facilitator_name?: string;
-    alternative_slots?: Array<{ slot: Slot; remaining: number; total: number }>;
+    alternative_slots?: Array<{ slot: string; remaining: number; total: number }>;
   };
 
   if (result.status === "assigned") {
     return {
       success: true,
       member: {
-        full_name: formData.full_name,
+        first_name: formData.first_name.trim(),
+        last_name:  formData.last_name.trim(),
         class_name: result.class_name!,
-        slot: result.slot!,
+        slot:       result.slot!,
         facilitator_name: result.facilitator_name,
       },
     };
@@ -67,7 +64,7 @@ export async function registerMember(formData: {
     return {
       success: false,
       error: "slot_full",
-      alternativeSlots: result.alternative_slots,
+      alternativeSlots: result.alternative_slots?.filter((s) => s.remaining > 0),
     };
   }
 
@@ -82,39 +79,35 @@ export async function registerMember(formData: {
 }
 
 export async function getSlotCapacities(): Promise<
-  Array<{ slot: Slot; remaining: number; total: number }>
+  Array<{ slot: string; remaining: number; total: number }>
 > {
   const supabase = createServerSupabaseClient();
 
-  const slots: Slot[] = ["8am", "10am", "12pm"];
+  const { data: classData } = await supabase
+    .from("classes")
+    .select("slot, id, capacity_max")
+    .eq("is_active", true);
+
+  if (!classData || classData.length === 0) return [];
+
+  const slotMap = new Map<string, { classIds: string[]; totalCapacity: number }>();
+  for (const cls of classData) {
+    if (!slotMap.has(cls.slot)) slotMap.set(cls.slot, { classIds: [], totalCapacity: 0 });
+    const entry = slotMap.get(cls.slot)!;
+    entry.classIds.push(cls.id);
+    entry.totalCapacity += cls.capacity_max;
+  }
+
   const results = await Promise.all(
-    slots.map(async (slot) => {
-      const { data: classes } = await supabase
-        .from("classes")
-        .select("id, capacity_max")
-        .eq("slot", slot)
-        .eq("is_active", true);
-
-      if (!classes || classes.length === 0) {
-        return { slot, remaining: 0, total: 0 };
-      }
-
-      const classIds = classes.map((c) => c.id);
-      const totalCapacity = classes.reduce((sum, c) => sum + c.capacity_max, 0);
-
+    Array.from(slotMap.entries()).map(async ([slot, { classIds, totalCapacity }]) => {
       const { count } = await supabase
         .from("members")
         .select("*", { count: "exact", head: true })
         .in("class_id", classIds);
-
       const used = count ?? 0;
-      return {
-        slot,
-        remaining: Math.max(0, totalCapacity - used),
-        total: totalCapacity,
-      };
+      return { slot, remaining: Math.max(0, totalCapacity - used), total: totalCapacity };
     })
   );
 
-  return results;
+  return results.sort((a, b) => a.slot.localeCompare(b.slot));
 }

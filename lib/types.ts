@@ -1,8 +1,9 @@
-export type Slot = "8am" | "10am" | "12pm";
+export type Slot = string; // dynamic — derived from classes table at runtime
 
 export interface Member {
   id: string;
-  full_name: string;
+  first_name: string;
+  last_name: string;
   phone: string;
   email?: string;
   preferred_slot: Slot;
@@ -68,4 +69,8 @@ export interface SlotCapacity {
   used: number;
   remaining: number;
   is_full: boolean;
+}
+
+export function displayName(m: Pick<Member, "first_name" | "last_name">): string {
+  return `${m.first_name} ${m.last_name}`;
 }

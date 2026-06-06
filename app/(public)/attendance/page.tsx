@@ -1,80 +1,98 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle, ClipboardList } from "lucide-react";
+import { CheckCircle, ClipboardList, AlertCircle } from "lucide-react";
 import { CLALogo } from "@/components/ui/CLALogo";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { logAttendance, getClassesForAttendance, type ClassForAttendance } from "@/actions/attendance";
-import type { Slot } from "@/lib/types";
+import {
+  logAttendance,
+  getClassesForAttendance,
+  getDistinctSlots,
+  type ClassForAttendance,
+} from "@/actions/attendance";
 
-const SLOT_LABELS: Record<Slot, string> = {
-  "8am": "8 AM",
-  "10am": "10 AM",
-  "12pm": "Midday",
-};
+function formatSlotLabel(slot: string): string {
+  const labels: Record<string, string> = {
+    "8am":  "8 AM",
+    "10am": "10 AM",
+    "12pm": "Midday",
+    "2pm":  "2 PM",
+    "4pm":  "4 PM",
+  };
+  return labels[slot] ?? slot.toUpperCase();
+}
 
 export default function AttendancePage() {
-  const [submitted, setSubmitted] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted]     = useState(false);
+  const [loading, setLoading]         = useState(false);
   const [serverError, setServerError] = useState("");
-  const [allClasses, setAllClasses] = useState<ClassForAttendance[]>([]);
-  const [successData, setSuccessData] = useState<{
-    name: string;
-    slot: Slot;
-    class_name: string;
-  } | null>(null);
+  const [allClasses, setAllClasses]   = useState<ClassForAttendance[]>([]);
+  const [slots, setSlots]             = useState<string[]>([]);
+  const [successData, setSuccessData] = useState<{ name: string; slot: string; class_name: string } | null>(null);
+  const [suggestion, setSuggestion]   = useState<{ text: string; matchType: "reversed" | "fuzzy" } | null>(null);
 
   const [form, setForm] = useState({
-    member_name: "",
-    slot: "" as Slot | "",
-    class_id: "",
+    first_name: "",
+    last_name:  "",
+    phone:      "",
+    slot:       "",
+    class_id:   "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    getClassesForAttendance().then(setAllClasses);
+    Promise.all([getClassesForAttendance(), getDistinctSlots()]).then(([classes, sl]) => {
+      setAllClasses(classes);
+      setSlots(sl);
+    });
   }, []);
 
-  function handleSlotChange(slot: Slot) {
+  function handleSlotChange(slot: string) {
     setForm((f) => ({ ...f, slot, class_id: "" }));
     setErrors((e) => ({ ...e, slot: "", class_id: "" }));
+    setSuggestion(null);
   }
 
-  const classesForSlot = form.slot
-    ? allClasses.filter((c) => c.slot === form.slot)
-    : [];
+  const classesForSlot = form.slot ? allClasses.filter((c) => c.slot === form.slot) : [];
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!form.member_name.trim()) e.member_name = "Full name is required";
-    if (!form.slot) e.slot = "Please select your class time";
-    if (!form.class_id) e.class_id = "Please select your class";
+    if (!form.first_name.trim()) e.first_name = "First name is required";
+    if (!form.last_name.trim())  e.last_name  = "Last name is required";
+    if (!form.phone.trim())      e.phone      = "Phone number is required";
+    if (!form.slot)              e.slot       = "Please select your class time";
+    if (!form.class_id)         e.class_id   = "Please select your class";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent, forceAnonymous = false) {
     e.preventDefault();
-    if (!validate()) return;
+    if (!forceAnonymous && !validate()) return;
+    setSuggestion(null);
     setLoading(true);
     setServerError("");
 
     const result = await logAttendance({
-      member_name: form.member_name.trim(),
-      class_id: form.class_id,
+      first_name:     form.first_name.trim(),
+      last_name:      form.last_name.trim(),
+      phone:          form.phone.trim(),
+      class_id:       form.class_id,
+      forceAnonymous,
     });
 
     setLoading(false);
 
-    if (result.success) {
-      setSuccessData({
-        name: form.member_name.trim(),
-        slot: result.slot!,
-        class_name: result.class_name!,
-      });
+    if ("needsSuggestion" in result && result.needsSuggestion) {
+      setSuggestion({ text: result.suggestion, matchType: result.matchType });
+      return;
+    }
+
+    if ("success" in result && result.success) {
+      setSuccessData({ name: `${form.first_name.trim()} ${form.last_name.trim()}`, slot: result.slot!, class_name: result.class_name! });
       setSubmitted(true);
-    } else {
+    } else if ("error" in result) {
       setServerError(result.error ?? "Something went wrong. Please try again.");
     }
   }
@@ -82,10 +100,7 @@ export default function AttendancePage() {
   // ── SUCCESS ─────────────────────────────────────────────────
   if (submitted && successData) {
     return (
-      <div
-        className="min-h-dvh flex flex-col items-center justify-center p-6 animate-fade-in"
-        style={{ background: "var(--cla-bg-dark)" }}
-      >
+      <div className="min-h-dvh flex flex-col items-center justify-center p-6 animate-fade-in" style={{ background: "var(--cla-bg-dark)" }}>
         <div className="w-full max-w-sm flex flex-col items-center gap-6 text-center">
           <CLALogo size="md" />
           <div className="success-checkmark">
@@ -96,30 +111,25 @@ export default function AttendancePage() {
               Attendance Recorded!
             </h1>
             <p style={{ color: "rgba(248,240,230,0.7)" }}>
-              God bless you, {successData.name.split(" ")[0]}. We're glad you're here today.
+              God bless you, {form.first_name}. We're glad you're here today.
             </p>
           </div>
-          <div
-            className="w-full rounded-xl p-5 text-left flex flex-col gap-3"
-            style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.25)" }}
-          >
+          <div className="w-full rounded-xl p-5 text-left flex flex-col gap-3" style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.25)" }}>
             <div>
               <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Class</p>
               <p className="text-xl font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "var(--cla-amber-light)" }}>{successData.class_name}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Service Time</p>
-              <p className="font-semibold">{SLOT_LABELS[successData.slot]}</p>
+              <p className="font-semibold">{formatSlotLabel(successData.slot)}</p>
             </div>
           </div>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setSubmitted(false);
-              setSuccessData(null);
-              setForm({ member_name: "", slot: "", class_id: "" });
-            }}
-          >
+          <Button variant="secondary" onClick={() => {
+            setSubmitted(false);
+            setSuccessData(null);
+            setForm({ first_name: "", last_name: "", phone: "", slot: "", class_id: "" });
+            setSuggestion(null);
+          }}>
             Mark Another Person
           </Button>
         </div>
@@ -130,11 +140,7 @@ export default function AttendancePage() {
   // ── FORM ────────────────────────────────────────────────────
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--cla-bg-dark)" }}>
-      {/* Hero */}
-      <div
-        className="grain-overlay relative overflow-hidden"
-        style={{ background: "linear-gradient(135deg, #200909 0%, #3e1212 50%, #5c1616 100%)", paddingTop: "env(safe-area-inset-top)" }}
-      >
+      <div className="grain-overlay relative overflow-hidden" style={{ background: "linear-gradient(135deg, #200909 0%, #3e1212 50%, #5c1616 100%)", paddingTop: "env(safe-area-inset-top)" }}>
         <div className="relative z-10 flex flex-col items-center gap-3 px-6 py-8 text-center">
           <CLALogo size="md" />
           <div>
@@ -149,21 +155,70 @@ export default function AttendancePage() {
         <div className="absolute top-0 left-0 w-40 h-40 rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(228,148,12,0.1) 0%, transparent 70%)" }} />
       </div>
 
-      {/* Form */}
       <div className="flex-1 flex flex-col items-center px-4 py-6">
-        <form onSubmit={handleSubmit} className="w-full max-w-sm flex flex-col gap-5">
+        <form onSubmit={(e) => handleSubmit(e)} className="w-full max-w-sm flex flex-col gap-5">
 
           {/* Name */}
-          <div className="cla-card p-5">
+          <div className="cla-card p-5 flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="First Name"
+                placeholder="e.g. Amara"
+                value={form.first_name}
+                onChange={(e) => { setForm((f) => ({ ...f, first_name: e.target.value })); setSuggestion(null); }}
+                error={errors.first_name}
+                required
+              />
+              <Input
+                label="Last Name"
+                placeholder="e.g. Johnson"
+                value={form.last_name}
+                onChange={(e) => { setForm((f) => ({ ...f, last_name: e.target.value })); setSuggestion(null); }}
+                error={errors.last_name}
+                required
+              />
+            </div>
             <Input
-              label="Full Name"
-              placeholder="e.g. Amara Johnson"
-              value={form.member_name}
-              onChange={(e) => setForm((f) => ({ ...f, member_name: e.target.value }))}
-              error={errors.member_name}
+              label="Phone Number"
+              placeholder="e.g. 0812 345 6789"
+              type="tel"
+              value={form.phone}
+              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+              error={errors.phone}
               required
             />
           </div>
+
+          {/* Name suggestion warning */}
+          {suggestion && (
+            <div className="cla-card p-4 flex flex-col gap-3" style={{ border: "1px solid rgba(228,148,12,0.4)" }}>
+              <div className="flex items-start gap-2">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" style={{ color: "var(--cla-amber)" }} />
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-semibold" style={{ color: "var(--cla-amber-light)" }}>
+                    {suggestion.matchType === "reversed"
+                      ? "Name entered in wrong order"
+                      : "Did you mean a different spelling?"}
+                  </p>
+                  <p className="text-sm" style={{ color: "rgba(248,240,230,0.7)" }}>
+                    Did you mean <strong style={{ color: "var(--cla-amber-light)" }}>{suggestion.text}</strong>?
+                    Your name must match exactly how you registered.
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "rgba(248,240,230,0.45)" }}>
+                    Correct your name above and try again, or submit as a guest if you're a new visitor.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); handleSubmit(e as any, true); }}
+                className="text-xs underline text-left"
+                style={{ color: "rgba(248,240,230,0.4)" }}
+              >
+                I'm not that person — submit as anonymous guest
+              </button>
+            </div>
+          )}
 
           {/* Class Time */}
           <div className="cla-card p-5 flex flex-col gap-4">
@@ -172,29 +227,16 @@ export default function AttendancePage() {
               {errors.slot && <p className="text-xs mt-1" style={{ color: "#ff6b6b" }}>{errors.slot}</p>}
             </div>
             <div className="flex flex-col gap-3">
-              {(["8am", "10am", "12pm"] as Slot[]).map((slot) => {
+              {slots.map((slot) => {
                 const isSelected = form.slot === slot;
                 return (
                   <label key={slot} className={`slot-radio ${isSelected ? "selected" : ""}`} style={{ cursor: "pointer" }}>
-                    <input
-                      type="radio"
-                      name="slot"
-                      value={slot}
-                      checked={isSelected}
-                      onChange={() => handleSlotChange(slot)}
-                      className="sr-only"
-                    />
-                    <div
-                      className="w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-all"
-                      style={{
-                        borderColor: isSelected ? "var(--cla-amber)" : "rgba(228,148,12,0.3)",
-                        background: isSelected ? "var(--cla-amber)" : "transparent",
-                      }}
-                    >
+                    <input type="radio" name="slot" value={slot} checked={isSelected} onChange={() => handleSlotChange(slot)} className="sr-only" />
+                    <div className="w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-all" style={{ borderColor: isSelected ? "var(--cla-amber)" : "rgba(228,148,12,0.3)", background: isSelected ? "var(--cla-amber)" : "transparent" }}>
                       {isSelected && <div className="w-2 h-2 rounded-full" style={{ background: "#200909" }} />}
                     </div>
                     <span className="font-bold text-base" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>
-                      {SLOT_LABELS[slot]}
+                      {formatSlotLabel(slot)}
                     </span>
                   </label>
                 );
@@ -202,18 +244,14 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          {/* Class + Facilitator — revealed after slot is picked */}
+          {/* Class + Facilitator */}
           {form.slot && (
             <div className="cla-card p-5 flex flex-col gap-3 animate-fade-in">
               <div>
                 <h2 className="text-lg font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Class Number and Facilitator</h2>
                 {errors.class_id && <p className="text-xs mt-1" style={{ color: "#ff6b6b" }}>{errors.class_id}</p>}
               </div>
-              <select
-                value={form.class_id}
-                onChange={(e) => setForm((f) => ({ ...f, class_id: e.target.value }))}
-                className="cla-input"
-              >
+              <select value={form.class_id} onChange={(e) => setForm((f) => ({ ...f, class_id: e.target.value }))} className="cla-input">
                 <option value="">Choose…</option>
                 {classesForSlot.map((cls) => (
                   <option key={cls.id} value={cls.id}>
