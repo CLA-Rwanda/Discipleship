@@ -24,9 +24,30 @@ UPDATE classes SET facilitator_id = NULL WHERE facilitator_id IS NOT NULL;
 DELETE FROM facilitators;
 DELETE FROM classes;
 
--- Update app_settings for 32-class structure
-INSERT INTO app_settings (key, value) VALUES ('max_classes', '32')
-ON CONFLICT (key) DO UPDATE SET value = '32', updated_at = now();
+-- Ensure app_settings table exists (idempotent — safe if already created by migration 05)
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "public_read_app_settings" ON app_settings FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE POLICY "admin_write_app_settings" ON app_settings FOR ALL USING (auth.role() = 'authenticated');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Seed default settings (only if not already present)
+INSERT INTO app_settings (key, value) VALUES
+  ('total_sessions',           '21'),
+  ('attendance_threshold_pct', '75'),
+  ('max_members_per_class',    '15'),
+  ('max_classes',              '32')
+ON CONFLICT (key) DO NOTHING;
+
+-- Update max_classes for 32-class structure
+UPDATE app_settings SET value = '32', updated_at = now() WHERE key = 'max_classes';
 
 -- 32 classes: Class 01-16 at 8am and 10am
 INSERT INTO classes (name, slot, capacity_min, capacity_max) VALUES
