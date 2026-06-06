@@ -137,7 +137,7 @@ export default function FacilitatorsPage() {
     for (const fac of facData ?? []) namesMap[fac.id] = fac.full_name;
     setFacilitatorNamesById(namesMap);
     setSelectedClassIds(new Set(classes.filter((c) => c.facilitator_id === f.id).map((c) => c.id)));
-    const slots = [...new Set(classes.map((c) => c.slot))].sort();
+    const slots = Array.from(new Set(classes.map((c) => c.slot))).sort();
     setActiveSlotTab(slots[0] ?? "");
     setClassesLoading(false);
   }
@@ -289,7 +289,7 @@ export default function FacilitatorsPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  const assignSlots = [...new Set(allClasses.map((c) => c.slot))].sort();
+  const assignSlots = Array.from(new Set(allClasses.map((c) => c.slot))).sort();
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">

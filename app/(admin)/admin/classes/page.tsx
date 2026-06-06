@@ -64,7 +64,7 @@ export default function ClassesPage() {
     setLoading(false);
 
     // Derive slots from loaded classes
-    const slots = [...new Set(enriched.map((c: any) => c.slot as string))].sort();
+    const slots = Array.from(new Set(enriched.map((c: any) => c.slot as string))).sort();
     setExistingSlots(slots);
   }, []);
 
@@ -148,7 +148,7 @@ export default function ClassesPage() {
   }
 
   const filtered = filterSlot === "all" ? classes : classes.filter((c) => c.slot === filterSlot);
-  const allSlots = [...new Set(classes.map((c) => c.slot))].sort();
+  const allSlots = Array.from(new Set(classes.map((c) => c.slot))).sort();
   const fullClasses = classes.filter((c) => c.member_count >= c.capacity_max);
 
   const slotsFull = allSlots.filter((slot) => {

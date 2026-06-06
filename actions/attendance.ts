@@ -73,7 +73,7 @@ export async function getDistinctSlots(): Promise<string[]> {
     .select("slot")
     .eq("is_active", true);
 
-  const slots = [...new Set((data ?? []).map((c: any) => c.slot as string))].sort();
+  const slots = Array.from(new Set((data ?? []).map((c: any) => c.slot as string))).sort();
   return slots;
 }
 

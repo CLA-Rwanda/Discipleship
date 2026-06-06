@@ -420,7 +420,7 @@ export default function AttendancePage() {
                   <input type="text" placeholder="Search by name, class, or facilitator…" value={logSearch}
                     onChange={(e) => setLogSearch(e.target.value)} className="cla-input pl-9 text-sm" />
                 </div>
-                {["all", ...[...new Set(rows.map((r) => r.service_slot))].sort()].map((s) => (
+                {(["all"] as string[]).concat(Array.from(new Set(rows.map((r) => r.service_slot))).sort()).map((s) => (
                   <button key={s} onClick={() => setFilterSlot(s)}
                     className="px-3 py-2 rounded-full text-sm font-bold transition-all"
                     style={{ fontFamily: "Barlow Condensed, sans-serif", background: filterSlot === s ? "linear-gradient(135deg,#E89A10,#F8BA18)" : "rgba(255,255,255,0.05)", color: filterSlot === s ? "#200909" : "rgba(248,240,230,0.6)", border: filterSlot === s ? "none" : "1px solid rgba(228,148,12,0.2)" }}

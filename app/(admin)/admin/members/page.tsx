@@ -50,7 +50,7 @@ export default function MembersPage() {
   }, []);
 
   // Dynamic slot list derived from loaded data
-  const slots = [...new Set(members.map((m) => m.preferred_slot))].sort();
+  const slots = Array.from(new Set(members.map((m) => m.preferred_slot))).sort();
 
   const filtered = members
     .filter((m) => {
