@@ -232,7 +232,7 @@ export default function AttendancePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(228,148,12,0.1)" }}>
+      <div className="flex gap-1 p-1 rounded-xl w-full sm:w-fit overflow-x-auto" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(228,148,12,0.1)" }}>
         {([
           { key: "progress", label: "Graduation Progress", icon: GraduationCap },
           { key: "log",      label: "Attendance Log",      icon: ClipboardList  },
@@ -240,8 +240,8 @@ export default function AttendancePage() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all"
-            style={btnStyle(tab === key)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all flex-1 sm:flex-none whitespace-nowrap"
+            style={{ ...btnStyle(tab === key), minHeight: 44 }}
           >
             <Icon size={15} />
             {label}
@@ -415,7 +415,7 @@ export default function AttendancePage() {
             <div className="flex flex-col gap-5">
               {/* Filters */}
               <div className="flex gap-3 flex-wrap">
-                <div className="relative flex-1 min-w-[200px]">
+                <div className="relative w-full sm:flex-1 sm:min-w-[200px]">
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "rgba(248,240,230,0.35)" }} />
                   <input type="text" placeholder="Search by name, class, or facilitator…" value={logSearch}
                     onChange={(e) => setLogSearch(e.target.value)} className="cla-input pl-9 text-sm" />
@@ -423,7 +423,7 @@ export default function AttendancePage() {
                 {(["all"] as string[]).concat(Array.from(new Set(rows.map((r) => r.service_slot))).sort()).map((s) => (
                   <button key={s} onClick={() => setFilterSlot(s)}
                     className="px-3 py-2 rounded-full text-sm font-bold transition-all"
-                    style={{ fontFamily: "Barlow Condensed, sans-serif", background: filterSlot === s ? "linear-gradient(135deg,#E89A10,#F8BA18)" : "rgba(255,255,255,0.05)", color: filterSlot === s ? "#200909" : "rgba(248,240,230,0.6)", border: filterSlot === s ? "none" : "1px solid rgba(228,148,12,0.2)" }}
+                    style={{ minHeight: 44, fontFamily: "Barlow Condensed, sans-serif", background: filterSlot === s ? "linear-gradient(135deg,#E89A10,#F8BA18)" : "rgba(255,255,255,0.05)", color: filterSlot === s ? "#200909" : "rgba(248,240,230,0.6)", border: filterSlot === s ? "none" : "1px solid rgba(228,148,12,0.2)" }}
                   >
                     {s === "all" ? "All Slots" : s.toUpperCase()}
                   </button>

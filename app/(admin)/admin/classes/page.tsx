@@ -208,12 +208,12 @@ export default function ClassesPage() {
             {classes.length} active classes · {fullClasses.length} at capacity · limit {maxClasses}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {/* Slot filter */}
           <div className="flex gap-2 flex-wrap">
             {(["all", ...allSlots] as string[]).map((s) => (
-              <button key={s} onClick={() => setFilterSlot(s)} className="px-3 py-1.5 rounded-full text-sm font-bold transition-all"
-                style={{ fontFamily: "Barlow Condensed, sans-serif", background: filterSlot === s ? "linear-gradient(135deg, #E89A10, #F8BA18)" : "rgba(255,255,255,0.05)", color: filterSlot === s ? "#200909" : "rgba(248,240,230,0.6)", border: filterSlot === s ? "none" : "1px solid rgba(228,148,12,0.2)" }}>
+              <button key={s} onClick={() => setFilterSlot(s)} className="px-3 py-2 rounded-full text-sm font-bold transition-all"
+                style={{ minHeight: 44, fontFamily: "Barlow Condensed, sans-serif", background: filterSlot === s ? "linear-gradient(135deg, #E89A10, #F8BA18)" : "rgba(255,255,255,0.05)", color: filterSlot === s ? "#200909" : "rgba(248,240,230,0.6)", border: filterSlot === s ? "none" : "1px solid rgba(228,148,12,0.2)" }}>
                 {s === "all" ? "All" : s}
               </button>
             ))}

@@ -243,7 +243,7 @@ export default function RegisterPage() {
               Join Our <span className="text-amber-gradient">Discipleship</span><br />Classes
             </h1>
             <p className="mt-1 text-sm" style={{ color: "rgba(248,240,230,0.6)" }}>
-              Hello there! We're excited to have you join our discipleship classes. Classes happen every Sunday, at 8:00 AM and 10:00 AM. Please fill out the form below to register, and select your preferred time.
+              Hello there! We're excited to have you join our discipleship classes. Classes happen every Sunday, at 8:00 AM and 10:00 AM. <br /> Please fill out the form below to register, and select your preferred time.
             </p>
           </div>
         </div>
@@ -251,7 +251,7 @@ export default function RegisterPage() {
       </div>
 
       <div className="flex-1 flex flex-col items-center px-4 py-6">
-        <form onSubmit={handleSubmit} className="w-full max-w-sm flex flex-col gap-5">
+        <form onSubmit={handleSubmit} className="w-full max-w-lg flex flex-col gap-5">
           <div className="cla-card p-5 flex flex-col gap-4">
             <h2 className="text-lg font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Your Details</h2>
 
@@ -348,7 +348,7 @@ export default function RegisterPage() {
 
           <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-xs" style={{ background: "rgba(228,148,12,0.06)", border: "1px solid rgba(228,148,12,0.15)", color: "rgba(248,240,230,0.5)" }}>
             <span style={{ color: "var(--cla-amber)", fontSize: "1rem" }}>ℹ</span>
-            You'll receive a confirmation once your registration has been processed.
+            You'll receive a confirmation after your registration has been processed.
           </div>
         </form>
       </div>

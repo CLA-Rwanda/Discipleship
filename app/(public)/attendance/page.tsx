@@ -67,19 +67,18 @@ export default function AttendancePage() {
     return Object.keys(e).length === 0;
   }
 
-  async function handleSubmit(e: React.FormEvent, forceAnonymous = false) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!forceAnonymous && !validate()) return;
+    if (!validate()) return;
     setSuggestion(null);
     setLoading(true);
     setServerError("");
 
     const result = await logAttendance({
-      first_name:     form.first_name.trim(),
-      last_name:      form.last_name.trim(),
-      phone:          form.phone.trim(),
-      class_id:       form.class_id,
-      forceAnonymous,
+      first_name: form.first_name.trim(),
+      last_name:  form.last_name.trim(),
+      phone:      form.phone.trim(),
+      class_id:   form.class_id,
     });
 
     setLoading(false);
@@ -156,7 +155,7 @@ export default function AttendancePage() {
       </div>
 
       <div className="flex-1 flex flex-col items-center px-4 py-6">
-        <form onSubmit={(e) => handleSubmit(e)} className="w-full max-w-sm flex flex-col gap-5">
+        <form onSubmit={(e) => handleSubmit(e)} className="w-full max-w-lg flex flex-col gap-5">
 
           {/* Name */}
           <div className="cla-card p-5 flex flex-col gap-3">
@@ -205,18 +204,10 @@ export default function AttendancePage() {
                     Your name must match exactly how you registered.
                   </p>
                   <p className="text-xs mt-1" style={{ color: "rgba(248,240,230,0.45)" }}>
-                    Correct your name above and try again, or submit as a guest if you're a new visitor.
+                    Please correct your name above and try again.
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={(e) => { e.preventDefault(); handleSubmit(e as any, true); }}
-                className="text-xs underline text-left"
-                style={{ color: "rgba(248,240,230,0.4)" }}
-              >
-                I'm not that person — submit as anonymous guest
-              </button>
             </div>
           )}
 

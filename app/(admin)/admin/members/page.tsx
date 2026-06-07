@@ -144,7 +144,7 @@ export default function MembersPage() {
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative w-full sm:flex-1 sm:min-w-[200px]">
           <Search
             size={16}
             className="absolute left-3 top-1/2 -translate-y-1/2"
@@ -164,6 +164,7 @@ export default function MembersPage() {
             onClick={() => setFilterSlot(s)}
             className="px-3 py-2 rounded-full text-sm font-bold transition-all"
             style={{
+              minHeight: 44,
               fontFamily: "Barlow Condensed, sans-serif",
               background:
                 filterSlot === s

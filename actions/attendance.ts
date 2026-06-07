@@ -92,7 +92,6 @@ export async function logAttendance(formData: {
   last_name: string;
   phone: string;
   class_id: string;
-  forceAnonymous?: boolean;
 }): Promise<AttendanceSubmitResult> {
   const admin = createAdminClient();
 
@@ -105,30 +104,35 @@ export async function logAttendance(formData: {
   if (clsErr || !cls) return { success: false, error: "Class not found." };
 
   const memberName = `${formData.first_name.trim()} ${formData.last_name.trim()}`;
-  let memberId: string | null = null;
 
-  if (!formData.forceAnonymous) {
-    const { data: matchResult, error: matchErr } = await admin.rpc("match_attendance_name", {
-      p_first_name: formData.first_name.trim(),
-      p_last_name:  formData.last_name.trim(),
-      p_class_id:   formData.class_id,
-    });
+  const { data: matchResult, error: matchErr } = await admin.rpc("match_attendance_name", {
+    p_first_name: formData.first_name.trim(),
+    p_last_name:  formData.last_name.trim(),
+    p_class_id:   formData.class_id,
+  });
 
-    if (!matchErr && matchResult) {
-      const match = matchResult as AttendanceNameMatch;
-
-      if (match.match_type === "exact") {
-        memberId = match.member_id;
-      } else if (match.match_type === "reversed" || match.match_type === "fuzzy") {
-        return {
-          needsSuggestion: true,
-          suggestion: match.suggestion,
-          matchType: match.match_type,
-        };
-      }
-      // match_type === 'none' → anonymous, memberId stays null
-    }
+  if (matchErr || !matchResult) {
+    return { success: false, error: "Could not verify your name. Please try again." };
   }
+
+  const match = matchResult as AttendanceNameMatch;
+
+  if (match.match_type === "reversed" || match.match_type === "fuzzy") {
+    return {
+      needsSuggestion: true,
+      suggestion: match.suggestion,
+      matchType: match.match_type,
+    };
+  }
+
+  if (match.match_type === "none") {
+    return {
+      success: false,
+      error: "Your name was not found in this class. Make sure you are registered and have selected the correct class and time slot.",
+    };
+  }
+
+  const exactMatch = match as Extract<AttendanceNameMatch, { match_type: "exact" }>;
 
   const { error } = await admin.from("attendance").insert({
     member_name:  memberName,
@@ -136,9 +140,9 @@ export async function logAttendance(formData: {
     class_id:     formData.class_id,
     service_slot: cls.slot,
     attended_at:  new Date().toISOString(),
-    member_id:    memberId,
+    member_id:    exactMatch.member_id,
   });
 
   if (error) return { success: false, error: error.message };
-  return { success: true, slot: cls.slot, class_name: cls.name, linked: !!memberId };
+  return { success: true, slot: cls.slot, class_name: cls.name, linked: true };
 }
