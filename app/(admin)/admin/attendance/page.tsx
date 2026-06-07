@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Search, Download, GraduationCap, ClipboardList, Pencil, Trash2, Check, X } from "lucide-react";
+import { Search, Download, ClipboardList, GraduationCap, Pencil, Trash2, Check, X } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import {
   updateAttendanceName,
@@ -10,6 +10,7 @@ import {
   deleteAttendancePerson,
 } from "@/actions/admin";
 import { getAllAttendanceForAdmin } from "@/actions/attendance";
+import { createClient } from "@/lib/supabase";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,7 +92,7 @@ export default function AttendancePage() {
   const [deletingLog, setDeletingLog] = useState(false);
 
   // Progress tab state
-  const [threshold, setThreshold] = useState(8);
+  const [threshold, setThreshold] = useState(16);
   const [progressSearch, setProgressSearch] = useState("");
   const [editPersonKey, setEditPersonKey] = useState<string | null>(null);
   const [editPersonName, setEditPersonName] = useState("");
@@ -100,8 +101,18 @@ export default function AttendancePage() {
   const [deletingPerson, setDeletingPerson] = useState(false);
 
   useEffect(() => {
-    getAllAttendanceForAdmin().then((data) => {
+    const supabase = createClient();
+    Promise.all([
+      getAllAttendanceForAdmin(),
+      supabase.from("app_settings").select("key,value"),
+    ]).then(([data, { data: settings }]) => {
       setRows(data);
+      if (settings) {
+        const map = Object.fromEntries(settings.map((s: { key: string; value: string }) => [s.key, s.value]));
+        const totalSessions = parseInt(map.total_sessions) || 21;
+        const thresholdPct  = parseInt(map.attendance_threshold_pct) || 75;
+        setThreshold(Math.ceil((totalSessions * thresholdPct) / 100));
+      }
       setLoading(false);
     });
   }, []);
@@ -248,19 +259,8 @@ export default function AttendancePage() {
           {tab === "progress" && (
             <div className="flex flex-col gap-5">
 
-              {/* Threshold + stats */}
+              {/* Stats */}
               <div className="flex flex-wrap gap-4 items-center">
-                <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: "var(--cla-bg-card)", border: "1px solid rgba(228,148,12,0.15)" }}>
-                  <GraduationCap size={16} style={{ color: "var(--cla-amber)" }} />
-                  <span className="text-sm font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Graduation threshold</span>
-                  <input
-                    type="number" min={1} max={52} value={threshold}
-                    onChange={(e) => setThreshold(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="cla-input text-center font-bold"
-                    style={{ width: 64, padding: "4px 8px", fontSize: "1rem" }}
-                  />
-                  <span className="text-sm" style={{ color: "rgba(248,240,230,0.45)" }}>sessions</span>
-                </div>
                 <div className="flex gap-3 flex-wrap">
                   <div className="px-4 py-2 rounded-xl text-sm font-bold" style={{ background: "rgba(200,212,0,0.1)", border: "1px solid rgba(200,212,0,0.25)", color: "#C8D400" }}>
                     {readyCount} ready to graduate
