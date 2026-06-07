@@ -161,7 +161,7 @@ export default function RegisterPage() {
               Welcome, {successData.first_name}!
             </h1>
             <p style={{ color: "rgba(248,240,230,0.7)" }}>
-              You've been registered for discipleship classes.
+              You have been registered for discipleship classes.
             </p>
           </div>
           <div className="w-full rounded-xl p-5 text-left" style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.25)" }}>
@@ -171,7 +171,7 @@ export default function RegisterPage() {
                 <p className="text-xl font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "var(--cla-amber-light)" }}>{successData.class_name}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Service Time</p>
+                <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Time</p>
                 <p className="font-semibold">{formatSlotLabel(successData.slot)}</p>
               </div>
               {successData.facilitator_name && (
@@ -183,7 +183,7 @@ export default function RegisterPage() {
             </div>
           </div>
           <p className="text-sm text-center" style={{ color: "rgba(248,240,230,0.5)" }}>
-            See you on Sunday! Your facilitator will guide you through the class.
+            We look forward to seeing you! Your facilitator will guide you through the class.
           </p>
           <Button variant="secondary" onClick={resetForm}>
             Register Another Person
@@ -243,7 +243,7 @@ export default function RegisterPage() {
               Join Our <span className="text-amber-gradient">Discipleship</span><br />Classes
             </h1>
             <p className="mt-1 text-sm" style={{ color: "rgba(248,240,230,0.6)" }}>
-              Classes happen on Sundays.
+              Hello there! We're excited to have you join our discipleship classes. Classes happen every Sunday, at 8:00 AM and 10:00 AM. Please fill out the form below to register, and select your preferred time.
             </p>
           </div>
         </div>
@@ -314,7 +314,7 @@ export default function RegisterPage() {
           <div className="cla-card p-5 flex flex-col gap-4">
             <div>
               <h2 className="text-lg font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Preferred Class Time</h2>
-              <p className="text-xs mt-0.5" style={{ color: "rgba(248,240,230,0.5)" }}>Pick the class time you normally attend</p>
+              
             </div>
 
             {capsLoading ? (
