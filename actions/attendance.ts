@@ -91,7 +91,6 @@ export type AttendanceSubmitResult =
 export async function logAttendance(formData: {
   first_name: string;
   last_name: string;
-  phone: string;
   class_id: string;
 }): Promise<AttendanceSubmitResult> {
   const { locked } = await isFormLocked();
@@ -142,7 +141,6 @@ export async function logAttendance(formData: {
 
   const { error } = await admin.from("attendance").insert({
     member_name:  memberName,
-    phone:        formData.phone.trim() || null,
     class_id:     formData.class_id,
     service_slot: cls.slot,
     attended_at:  new Date().toISOString(),

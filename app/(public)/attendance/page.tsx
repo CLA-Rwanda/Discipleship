@@ -41,7 +41,6 @@ export default function AttendancePage() {
   const [form, setForm] = useState({
     first_name: "",
     last_name:  "",
-    phone:      "",
     slot:       "",
     class_id:   "",
   });
@@ -68,13 +67,12 @@ export default function AttendancePage() {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const data = JSON.parse(raw) as {
-        firstName: string; lastName: string; phone: string; classId: string; slot: string;
+        firstName: string; lastName: string; classId: string; slot: string;
       };
       if (allClasses.find((c) => c.id === data.classId)) {
         setForm({
           first_name: data.firstName,
           last_name:  data.lastName,
-          phone:      data.phone,
           slot:       data.slot,
           class_id:   data.classId,
         });
@@ -96,7 +94,7 @@ export default function AttendancePage() {
   function clearPrefill() {
     localStorage.removeItem(STORAGE_KEY);
     setPrefillName(null);
-    setForm({ first_name: "", last_name: "", phone: "", slot: "", class_id: "" });
+    setForm({ first_name: "", last_name: "", slot: "", class_id: "" });
   }
 
   function handleMarkAnother() {
@@ -104,7 +102,7 @@ export default function AttendancePage() {
     setPrefillName(null);
     setSubmitted(false);
     setSuccessData(null);
-    setForm({ first_name: "", last_name: "", phone: "", slot: "", class_id: "" });
+    setForm({ first_name: "", last_name: "", slot: "", class_id: "" });
     setSuggestion(null);
   }
 
@@ -114,7 +112,6 @@ export default function AttendancePage() {
     const e: Record<string, string> = {};
     if (!form.first_name.trim()) e.first_name = "First name is required";
     if (!form.last_name.trim())  e.last_name  = "Last name is required";
-    if (!form.phone.trim())      e.phone      = "Phone number is required";
     if (!form.slot)              e.slot       = "Please select your class time";
     if (!form.class_id)         e.class_id   = "Please select your class";
     setErrors(e);
@@ -131,7 +128,6 @@ export default function AttendancePage() {
     const result = await logAttendance({
       first_name: form.first_name.trim(),
       last_name:  form.last_name.trim(),
-      phone:      form.phone.trim(),
       class_id:   form.class_id,
     });
 
@@ -148,7 +144,6 @@ export default function AttendancePage() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
           firstName: form.first_name.trim(),
           lastName:  form.last_name.trim(),
-          phone:     form.phone.trim(),
           classId:   form.class_id,
           slot:      form.slot,
         }));
@@ -271,7 +266,7 @@ export default function AttendancePage() {
           )}
 
           {/* Name */}
-          <div className="cla-card p-5 flex flex-col gap-3">
+          <div className="cla-card p-5">
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label="First Name"
@@ -290,15 +285,6 @@ export default function AttendancePage() {
                 required
               />
             </div>
-            <Input
-              label="Phone Number"
-              placeholder="e.g. 0812 345 6789"
-              type="tel"
-              value={form.phone}
-              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-              error={errors.phone}
-              required
-            />
           </div>
 
           {/* Name suggestion warning */}
