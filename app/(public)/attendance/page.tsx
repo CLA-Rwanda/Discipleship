@@ -334,29 +334,7 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          {/* Class + Facilitator */}
-          {form.slot && (
-            <div className="cla-card p-5 flex flex-col gap-3 animate-fade-in">
-              <div>
-                <h2 className="text-lg font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Class Number and Facilitator</h2>
-                {errors.class_id && <p className="text-xs mt-1" style={{ color: "#ff6b6b" }}>{errors.class_id}</p>}
-              </div>
-              <select value={form.class_id} onChange={(e) => setForm((f) => ({ ...f, class_id: e.target.value }))} className="cla-input">
-                <option value="">Choose…</option>
-                {classesForSlot.map((cls) => (
-                  <option key={cls.id} value={cls.id}>
-                    {cls.name}{cls.facilitator_name ? ` — ${cls.facilitator_name}` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {serverError && (
-            <div className="p-4 rounded-lg text-sm" style={{ background: "rgba(139,26,26,0.15)", border: "1px solid rgba(139,26,26,0.3)", color: "#ff6b6b" }}>
-              {serverError}
-            </div>
-          )}
+          {/* Class Selection */}
 
           <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full">
             <ClipboardList size={18} />
