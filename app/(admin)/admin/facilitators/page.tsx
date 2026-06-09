@@ -84,6 +84,8 @@ export default function FacilitatorsPage() {
   const [classesLoading, setClassesLoading] = useState(false);
   const [assignSaving, setAssignSaving]   = useState(false);
   const [pendingReplacements, setPendingReplacements] = useState<{ classId: string; className: string; currentName: string }[]>([]);
+  const [slotDisplacements, setSlotDisplacements]     = useState<{ oldName: string; newName: string; slot: string }[]>([]);
+  const [existingSlotConflicts, setExistingSlotConflicts] = useState<{ slot: string; names: string[] }[]>([]);
   const [showConfirm, setShowConfirm]     = useState(false);
   const [activeSlotTab, setActiveSlotTab] = useState<string>("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -125,6 +127,8 @@ export default function FacilitatorsPage() {
     setAssignTarget(f);
     setShowConfirm(false);
     setPendingReplacements([]);
+    setSlotDisplacements([]);
+    setExistingSlotConflicts([]);
     setClassesLoading(true);
     const supabase = createClient();
     const [{ data: classData }, { data: facData }] = await Promise.all([
@@ -136,7 +140,20 @@ export default function FacilitatorsPage() {
     const namesMap: Record<string, string> = {};
     for (const fac of facData ?? []) namesMap[fac.id] = fac.full_name;
     setFacilitatorNamesById(namesMap);
-    setSelectedClassIds(new Set(classes.filter((c) => c.facilitator_id === f.id).map((c) => c.id)));
+    const myClasses = classes.filter((c) => c.facilitator_id === f.id);
+    setSelectedClassIds(new Set(myClasses.map((c) => c.id)));
+
+    // Detect existing same-slot duplicates in DB
+    const bySlot = new Map<string, string[]>();
+    for (const c of myClasses) {
+      if (!bySlot.has(c.slot)) bySlot.set(c.slot, []);
+      bySlot.get(c.slot)!.push(c.name);
+    }
+    const conflicts = Array.from(bySlot.entries())
+      .filter(([, names]) => names.length > 1)
+      .map(([slot, names]) => ({ slot, names }));
+    setExistingSlotConflicts(conflicts);
+
     const slots = Array.from(new Set(classes.map((c) => c.slot))).sort();
     setActiveSlotTab(slots[0] ?? "");
     setClassesLoading(false);
@@ -169,22 +186,54 @@ export default function FacilitatorsPage() {
   }
 
   function toggleClass(classId: string) {
+    const cls = allClasses.find((c) => c.id === classId);
+    if (!cls) return;
     setSelectedClassIds((prev) => {
       const next = new Set(prev);
-      if (next.has(classId)) next.delete(classId); else next.add(classId);
+      if (next.has(classId)) {
+        next.delete(classId);
+      } else {
+        // Enforce one class per slot — auto-deselect any other class at the same slot
+        allClasses
+          .filter((c) => c.slot === cls.slot && c.id !== classId)
+          .forEach((c) => next.delete(c.id));
+        next.add(classId);
+      }
       return next;
     });
   }
 
   function handleAssignRequest() {
     if (!assignTarget) return;
-    const prevIds = new Set(allClasses.filter((c) => c.facilitator_id === assignTarget.id).map((c) => c.id));
+    const prevIds  = new Set(allClasses.filter((c) => c.facilitator_id === assignTarget.id).map((c) => c.id));
     const toAssign = Array.from(selectedClassIds).filter((id) => !prevIds.has(id));
+
+    // Classes newly selected that already belong to a different facilitator
     const replacements = toAssign
       .map((id) => allClasses.find((c) => c.id === id))
       .filter((c) => c && c.facilitator_id && c.facilitator_id !== assignTarget.id)
       .map((c) => ({ classId: c!.id, className: c!.name, currentName: facilitatorNamesById[c!.facilitator_id!] ?? "another facilitator" }));
-    if (replacements.length > 0) { setPendingReplacements(replacements); setShowConfirm(true); }
+
+    // Classes the facilitator currently holds that will be dropped because a
+    // different class at the same slot is now selected
+    const displacements = Array.from(prevIds)
+      .filter((id) => !selectedClassIds.has(id))
+      .map((id) => allClasses.find((c) => c.id === id))
+      .filter((old): old is ClassOption => {
+        if (!old) return false;
+        return Array.from(selectedClassIds).some((newId) => {
+          const nc = allClasses.find((c) => c.id === newId);
+          return nc?.slot === old.slot && !prevIds.has(newId);
+        });
+      })
+      .map((old) => {
+        const newCls = allClasses.find((c) => selectedClassIds.has(c.id) && c.slot === old.slot && !prevIds.has(c.id));
+        return { oldName: old.name, newName: newCls?.name ?? "another class", slot: old.slot };
+      });
+
+    setSlotDisplacements(displacements);
+    setPendingReplacements(replacements);
+    if (replacements.length > 0 || displacements.length > 0) setShowConfirm(true);
     else doAssignSave();
   }
 
@@ -397,8 +446,21 @@ export default function FacilitatorsPage() {
         {assignTarget && (
           <div className="flex flex-col gap-5">
             <p className="text-sm" style={{ color: "rgba(248,240,230,0.55)" }}>
-              Select any classes. A facilitator can be assigned across multiple classes and service times.
+              Select one class per service time. A facilitator cannot lead two classes happening at the same time.
             </p>
+            {existingSlotConflicts.length > 0 && (
+              <div className="flex flex-col gap-2 p-3 rounded-xl" style={{ background: "rgba(192,40,40,0.12)", border: "1px solid rgba(192,40,40,0.35)" }}>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={14} style={{ color: "#ff6b6b", flexShrink: 0 }} />
+                  <span className="text-sm font-bold" style={{ color: "#ff6b6b" }}>Slot conflict detected</span>
+                </div>
+                {existingSlotConflicts.map(({ slot, names }) => (
+                  <p key={slot} className="text-xs" style={{ color: "rgba(248,240,230,0.65)" }}>
+                    <span style={{ fontWeight: 600 }}>{slot}</span>: {names.join(", ")} — select only one.
+                  </p>
+                ))}
+              </div>
+            )}
             {classesLoading ? (
               <div className="flex items-center justify-center py-8">
                 <div className="spinner" style={{ width: 24, height: 24, borderTopColor: "var(--cla-amber)", borderColor: "rgba(228,148,12,0.2)" }} />
@@ -420,15 +482,24 @@ export default function FacilitatorsPage() {
                 </div>
                 <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto pr-1">
                   {allClasses.filter((c) => c.slot === activeSlotTab).map((cls) => {
-                    const isChecked   = selectedClassIds.has(cls.id);
-                    const takenByOther = cls.facilitator_id !== null && cls.facilitator_id !== assignTarget.id;
+                    const isChecked      = selectedClassIds.has(cls.id);
+                    const takenByOther   = cls.facilitator_id !== null && cls.facilitator_id !== assignTarget.id;
                     const currentFacName = takenByOther ? (facilitatorNamesById[cls.facilitator_id!] ?? "another facilitator") : null;
+                    // Another class at this slot is already selected
+                    const slotTaken = !isChecked && allClasses.some(
+                      (c) => c.slot === cls.slot && c.id !== cls.id && selectedClassIds.has(c.id)
+                    );
                     return (
                       <label key={cls.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all"
-                        style={{ background: isChecked ? "rgba(228,148,12,0.1)" : "rgba(255,255,255,0.03)", border: `1px solid ${isChecked ? "rgba(228,148,12,0.3)" : "rgba(255,255,255,0.06)"}` }}>
+                        style={{
+                          background: isChecked ? "rgba(228,148,12,0.1)" : slotTaken ? "rgba(255,255,255,0.015)" : "rgba(255,255,255,0.03)",
+                          border: `1px solid ${isChecked ? "rgba(228,148,12,0.3)" : "rgba(255,255,255,0.06)"}`,
+                          opacity: slotTaken ? 0.45 : 1,
+                        }}>
                         <input type="checkbox" checked={isChecked} onChange={() => toggleClass(cls.id)} className="accent-amber-500 w-4 h-4 shrink-0" />
                         <span className="flex-1 text-sm font-semibold" style={{ color: isChecked ? "#F8BA18" : "#E8E0D8" }}>{cls.name}</span>
-                        {currentFacName && <span className="text-xs shrink-0 max-w-[120px] truncate" style={{ color: "rgba(248,240,230,0.4)" }} title={`Currently: ${currentFacName}`}>{currentFacName}</span>}
+                        {slotTaken && <span className="text-xs shrink-0" style={{ color: "rgba(248,240,230,0.35)" }}>slot taken</span>}
+                        {!slotTaken && currentFacName && <span className="text-xs shrink-0 max-w-[120px] truncate" style={{ color: "rgba(248,240,230,0.4)" }} title={`Currently: ${currentFacName}`}>{currentFacName}</span>}
                       </label>
                     );
                   })}
@@ -443,19 +514,36 @@ export default function FacilitatorsPage() {
               <div className="flex flex-col gap-3 p-4 rounded-xl" style={{ background: "rgba(212,100,10,0.1)", border: "1px solid rgba(212,100,10,0.3)" }}>
                 <div className="flex items-start gap-2">
                   <AlertTriangle size={15} style={{ color: "#F8BA18", flexShrink: 0, marginTop: 1 }} />
-                  <p className="text-sm font-semibold" style={{ color: "#F8BA18" }}>This will replace the current facilitator for:</p>
+                  <p className="text-sm font-semibold" style={{ color: "#F8BA18" }}>Please confirm these changes:</p>
                 </div>
-                <ul className="flex flex-col gap-1 pl-5">
-                  {pendingReplacements.map((r) => (
-                    <li key={r.classId} className="text-sm" style={{ color: "rgba(248,240,230,0.75)" }}>
-                      <span style={{ color: "#E8E0D8", fontWeight: 600 }}>{r.className}</span>{" "}— currently{" "}
-                      <span style={{ color: "rgba(248,240,230,0.55)" }}>{r.currentName}</span>
-                    </li>
-                  ))}
-                </ul>
+                {slotDisplacements.length > 0 && (
+                  <ul className="flex flex-col gap-1 pl-5">
+                    {slotDisplacements.map((d, i) => (
+                      <li key={i} className="text-sm" style={{ color: "rgba(248,240,230,0.75)" }}>
+                        <span style={{ fontWeight: 600, color: "#E8E0D8" }}>{assignTarget!.full_name}</span> will be moved from{" "}
+                        <span style={{ fontWeight: 600, color: "#F8BA18" }}>{d.oldName}</span> to{" "}
+                        <span style={{ fontWeight: 600, color: "#F8BA18" }}>{d.newName}</span>{" "}
+                        <span style={{ color: "rgba(248,240,230,0.45)" }}>({d.slot})</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {pendingReplacements.length > 0 && (
+                  <>
+                    <p className="text-xs font-semibold pl-1" style={{ color: "rgba(248,240,230,0.5)" }}>Also replacing current facilitator on:</p>
+                    <ul className="flex flex-col gap-1 pl-5">
+                      {pendingReplacements.map((r) => (
+                        <li key={r.classId} className="text-sm" style={{ color: "rgba(248,240,230,0.75)" }}>
+                          <span style={{ color: "#E8E0D8", fontWeight: 600 }}>{r.className}</span>{" "}— currently{" "}
+                          <span style={{ color: "rgba(248,240,230,0.55)" }}>{r.currentName}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
                 <div className="flex gap-2">
                   <Button variant="secondary" size="sm" onClick={() => setShowConfirm(false)} className="flex-1">Go Back</Button>
-                  <Button variant="primary" size="sm" loading={assignSaving} onClick={doAssignSave} className="flex-1">Yes, Replace</Button>
+                  <Button variant="primary" size="sm" loading={assignSaving} onClick={doAssignSave} className="flex-1">Confirm</Button>
                 </div>
               </div>
             )}

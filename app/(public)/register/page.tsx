@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { CheckCircle, ChevronRight, Users, AlertCircle } from "lucide-react";
+import { CheckCircle, ChevronRight, Users, AlertCircle, Lock } from "lucide-react";
 import { CLALogo } from "@/components/ui/CLALogo";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { SlotPicker } from "@/components/ui/SlotPicker";
 import { registerMember, getSlotCapacities } from "@/actions/register";
 import { checkPhoneDuplicate, type DuplicateCheckResult } from "@/actions/check-duplicate";
+import { isFormLocked } from "@/actions/time-lock";
 
 type Step = "form" | "slot-conflict" | "success";
 
@@ -33,6 +34,8 @@ export default function RegisterPage() {
   const [loading, setLoading]     = useState(false);
   const [slotCaps, setSlotCaps]   = useState<SlotCap[]>([]);
   const [capsLoading, setCapsLoading] = useState(true);
+  const [timeLocked, setTimeLocked]   = useState(false);
+  const [lockChecked, setLockChecked] = useState(false);
 
   const [form, setForm] = useState({
     first_name:     "",
@@ -60,7 +63,9 @@ export default function RegisterPage() {
   const [selectedAlt, setSelectedAlt]       = useState<string>("");
 
   useEffect(() => {
-    getSlotCapacities().then((caps) => {
+    Promise.all([isFormLocked(), getSlotCapacities()]).then(([{ locked }, caps]) => {
+      setTimeLocked(locked);
+      setLockChecked(true);
       setSlotCaps(caps);
       setCapsLoading(false);
     });
@@ -145,6 +150,37 @@ export default function RegisterPage() {
     setSuccessData(null);
     setDupResult(null);
     setServerError("");
+  }
+
+  // ── LOADING ─────────────────────────────────────────────────
+  if (!lockChecked) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center" style={{ background: "var(--cla-bg-dark)" }}>
+        <div className="spinner" style={{ width: 32, height: 32, borderTopColor: "var(--cla-amber)", borderColor: "rgba(228,148,12,0.2)" }} />
+      </div>
+    );
+  }
+
+  // ── LOCKED ──────────────────────────────────────────────────
+  if (timeLocked) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center p-6 animate-fade-in" style={{ background: "var(--cla-bg-dark)" }}>
+        <div className="w-full max-w-sm flex flex-col items-center gap-6 text-center">
+          <CLALogo size="md" />
+          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.2)" }}>
+            <Lock size={30} style={{ color: "rgba(228,148,12,0.55)" }} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>
+              Registration Closed
+            </h1>
+            <p className="mt-2 text-sm" style={{ color: "rgba(248,240,230,0.6)" }}>
+              Registration is only available during Sunday service hours. Please come back when you're at church.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // ── SUCCESS ─────────────────────────────────────────────────

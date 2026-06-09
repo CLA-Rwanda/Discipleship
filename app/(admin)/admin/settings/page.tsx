@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { KeyRound, Eye, EyeOff, ShieldCheck, Skull, AlertTriangle, SlidersHorizontal, Save } from "lucide-react";
+import { KeyRound, Eye, EyeOff, ShieldCheck, Skull, AlertTriangle, SlidersHorizontal, Save, Lock, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { createClient } from "@/lib/supabase";
 import { changeAdminPassword } from "@/actions/auth";
 import { eraseAllData } from "@/actions/admin";
 import { getAppSettings, updateAppSetting } from "@/actions/settings";
+import { getTimeLocks, getTimeLockEnabled, createTimeLock, updateTimeLock, deleteTimeLock } from "@/actions/time-lock";
 import { ADMIN_EMAIL } from "@/lib/config";
+import { type TimeLock, DAY_NAMES } from "@/lib/time-lock";
 
 interface SettingField {
   key: string;
@@ -38,6 +40,18 @@ export default function SettingsPage() {
   const [savedKey, setSavedKey]               = useState<string | null>(null);
   const [settingsErrors, setSettingsErrors]   = useState<Record<string, string>>({});
 
+  // Time lock
+  const [timeLockEnabled, setTimeLockEnabled] = useState(false);
+  const [timeLocks, setTimeLocks]             = useState<TimeLock[]>([]);
+  const [tlLoading, setTlLoading]             = useState(true);
+  const [tlEnabling, setTlEnabling]           = useState(false);
+  const [addTlOpen, setAddTlOpen]             = useState(false);
+  const [tlForm, setTlForm]                   = useState({
+    label: "Sunday Service", day_of_week: 0, start_time: "08:00", end_time: "12:00", is_active: true,
+  });
+  const [tlSaving, setTlSaving]               = useState(false);
+  const [tlBusyId, setTlBusyId]               = useState<string | null>(null);
+
   // Danger zone
   const [dangerStep, setDangerStep]   = useState<0 | 1 | 2>(0);
   const [eraseCounts, setEraseCounts] = useState<{ members: number; attendance: number } | null>(null);
@@ -60,7 +74,11 @@ export default function SettingsPage() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user?.email === ADMIN_EMAIL) setIsSuperAdmin(true);
     });
-    getAppSettings().then((s) => {
+    Promise.all([
+      getAppSettings(),
+      getTimeLockEnabled(),
+      getTimeLocks(),
+    ]).then(([s, enabled, locks]) => {
       setAppSettings({
         total_sessions:           String(s.total_sessions),
         attendance_threshold_pct: String(s.attendance_threshold_pct),
@@ -68,6 +86,9 @@ export default function SettingsPage() {
         max_classes:              String(s.max_classes),
       });
       setSettingsLoading(false);
+      setTimeLockEnabled(enabled);
+      setTimeLocks(locks);
+      setTlLoading(false);
     });
   }, []);
 
@@ -93,6 +114,41 @@ export default function SettingsPage() {
       setSavedKey(key);
       setTimeout(() => setSavedKey(null), 2000);
     }
+  }
+
+  async function handleToggleTimeLock() {
+    setTlEnabling(true);
+    const newEnabled = !timeLockEnabled;
+    await updateAppSetting("time_lock_enabled", String(newEnabled));
+    setTimeLockEnabled(newEnabled);
+    setTlEnabling(false);
+  }
+
+  async function handleAddTimeLock() {
+    if (!tlForm.label.trim()) return;
+    setTlSaving(true);
+    const result = await createTimeLock({ ...tlForm, timezone: "Africa/Kigali" });
+    if (result.success) {
+      const updated = await getTimeLocks();
+      setTimeLocks(updated);
+      setAddTlOpen(false);
+      setTlForm({ label: "Sunday Service", day_of_week: 0, start_time: "08:00", end_time: "12:00", is_active: true });
+    }
+    setTlSaving(false);
+  }
+
+  async function handleToggleLockActive(lock: TimeLock) {
+    setTlBusyId(lock.id);
+    await updateTimeLock(lock.id, { is_active: !lock.is_active });
+    setTimeLocks((prev) => prev.map((l) => l.id === lock.id ? { ...l, is_active: !l.is_active } : l));
+    setTlBusyId(null);
+  }
+
+  async function handleDeleteTimeLock(id: string) {
+    setTlBusyId(id);
+    await deleteTimeLock(id);
+    setTimeLocks((prev) => prev.filter((l) => l.id !== id));
+    setTlBusyId(null);
   }
 
   async function openDangerZone() {
@@ -229,6 +285,171 @@ export default function SettingsPage() {
                   <p className="text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>of {totalSessions} sessions ({thresholdPct}%)</p>
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Time Lock */}
+      {isSuperAdmin && (
+        <div className="rounded-xl overflow-hidden" style={cardStyle}>
+          <div className="px-5 py-4 flex items-center justify-between gap-4" style={headerBorder}>
+            <div>
+              <h2 className="text-lg font-bold flex items-center gap-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>
+                <Lock size={18} style={{ color: "var(--cla-amber)" }} />
+                Time Lock
+              </h2>
+              <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
+                Restrict public forms to specific service hours only.
+              </p>
+            </div>
+            {tlLoading ? (
+              <div className="spinner shrink-0" style={{ width: 20, height: 20, borderTopColor: "var(--cla-amber)", borderColor: "rgba(228,148,12,0.2)" }} />
+            ) : (
+              <button
+                onClick={handleToggleTimeLock}
+                disabled={tlEnabling}
+                aria-label="Toggle time lock"
+                className="relative inline-flex shrink-0 rounded-full transition-colors"
+                style={{
+                  width: 44, height: 24,
+                  background: timeLockEnabled ? "var(--cla-amber)" : "rgba(255,255,255,0.12)",
+                  opacity: tlEnabling ? 0.6 : 1,
+                  cursor: tlEnabling ? "not-allowed" : "pointer",
+                }}
+              >
+                <span
+                  className="inline-block rounded-full transition-transform"
+                  style={{
+                    width: 18, height: 18, margin: 3,
+                    transform: timeLockEnabled ? "translateX(20px)" : "translateX(0)",
+                    background: "#fff",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
+                  }}
+                />
+              </button>
+            )}
+          </div>
+
+          {!tlLoading && (
+            <div className="p-5 flex flex-col gap-3">
+              {timeLocks.length === 0 && !addTlOpen && (
+                <p className="text-sm text-center py-2" style={{ color: "rgba(248,240,230,0.3)" }}>
+                  No time windows configured yet.
+                </p>
+              )}
+
+              {timeLocks.map((lock) => (
+                <div key={lock.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", opacity: lock.is_active ? 1 : 0.5 }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold leading-tight truncate">{lock.label}</p>
+                    <p className="text-xs mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
+                      {DAY_NAMES[lock.day_of_week]} · {lock.start_time} – {lock.end_time}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleToggleLockActive(lock)}
+                    disabled={tlBusyId === lock.id}
+                    className="text-xs px-2 py-1 rounded font-bold shrink-0"
+                    style={{
+                      fontFamily: "Barlow Condensed, sans-serif",
+                      background: lock.is_active ? "rgba(200,212,0,0.1)" : "rgba(255,255,255,0.06)",
+                      color: lock.is_active ? "#C8D400" : "rgba(248,240,230,0.4)",
+                      border: "1px solid",
+                      borderColor: lock.is_active ? "rgba(200,212,0,0.3)" : "rgba(255,255,255,0.1)",
+                    }}
+                  >
+                    {lock.is_active ? "On" : "Off"}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteTimeLock(lock.id)}
+                    disabled={tlBusyId === lock.id}
+                    className="p-1 rounded-lg shrink-0 transition-all"
+                    style={{ color: "rgba(192,40,40,0.5)" }}
+                    title="Delete window"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+
+              {addTlOpen ? (
+                <div className="flex flex-col gap-3 p-4 rounded-xl" style={{ background: "rgba(228,148,12,0.06)", border: "1px solid rgba(228,148,12,0.2)" }}>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="text-xs font-bold block mb-1" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Label</label>
+                      <input
+                        type="text"
+                        value={tlForm.label}
+                        onChange={(e) => setTlForm((f) => ({ ...f, label: e.target.value }))}
+                        className="cla-input text-sm"
+                        placeholder="e.g. Sunday Service"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold block mb-1" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Day</label>
+                      <select
+                        value={tlForm.day_of_week}
+                        onChange={(e) => setTlForm((f) => ({ ...f, day_of_week: parseInt(e.target.value) }))}
+                        className="cla-input text-sm appearance-none"
+                      >
+                        {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                      </select>
+                    </div>
+                    <div />
+                    <div>
+                      <label className="text-xs font-bold block mb-1" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Open at</label>
+                      <input
+                        type="time"
+                        value={tlForm.start_time}
+                        onChange={(e) => setTlForm((f) => ({ ...f, start_time: e.target.value }))}
+                        className="cla-input text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold block mb-1" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Close at</label>
+                      <input
+                        type="time"
+                        value={tlForm.end_time}
+                        onChange={(e) => setTlForm((f) => ({ ...f, end_time: e.target.value }))}
+                        className="cla-input text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      onClick={() => setAddTlOpen(false)}
+                      className="flex-1 py-2 rounded-lg text-sm font-bold"
+                      style={{ border: "1px solid rgba(255,255,255,0.1)", color: "rgba(248,240,230,0.5)" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddTimeLock}
+                      disabled={tlSaving || !tlForm.label.trim()}
+                      className="flex-1 py-2 rounded-lg text-sm font-bold transition-all"
+                      style={{ background: "linear-gradient(135deg, #E89A10, #F8BA18)", color: "#200909", opacity: tlSaving ? 0.7 : 1 }}
+                    >
+                      {tlSaving ? "Saving…" : "Save Window"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setAddTlOpen(true)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold self-start transition-all"
+                  style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.08)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)" }}
+                >
+                  <Plus size={14} /> Add Window
+                </button>
+              )}
+
+              {!timeLockEnabled && timeLocks.length > 0 && (
+                <p className="text-xs" style={{ color: "rgba(248,240,230,0.3)" }}>
+                  Toggle is off — windows are configured but not enforced.
+                </p>
+              )}
             </div>
           )}
         </div>

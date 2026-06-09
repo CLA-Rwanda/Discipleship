@@ -1,6 +1,7 @@
 "use server";
 
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { isFormLocked } from "@/actions/time-lock";
 
 export interface RegistrationResult {
   success: boolean;
@@ -26,6 +27,11 @@ export async function registerMember(formData: {
   email?: string;
   preferred_slot: string;
 }): Promise<RegistrationResult> {
+  const { locked } = await isFormLocked();
+  if (locked) {
+    return { success: false, error: "Registration is currently closed. Please come back during service hours." };
+  }
+
   const supabase = createServerSupabaseClient();
 
   const { data, error } = await supabase.rpc("assign_member_to_class", {

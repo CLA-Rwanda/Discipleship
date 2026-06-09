@@ -156,11 +156,23 @@ export default function ClassesPage() {
     getAppSettings().then((s) => setMaxClasses(s.max_classes));
   }
 
-  // CSV download for a class roster
-  function downloadRosterCSV(cls: ClassWithDetails) {
+  // CSV download for a class roster (includes sessions attended per member)
+  async function downloadRosterCSV(cls: ClassWithDetails) {
     if (cls.members.length === 0) return;
+    const supabase = createClient();
+    const memberIds = cls.members.map((m: any) => m.id);
+    const { data: attData } = await supabase
+      .from("attendance")
+      .select("member_id")
+      .in("member_id", memberIds);
+
+    const countById: Record<string, number> = {};
+    for (const r of attData ?? []) {
+      if (r.member_id) countById[r.member_id] = (countById[r.member_id] ?? 0) + 1;
+    }
+
     const rows = [
-      ["First Name", "Last Name", "Phone", "Email", "Class", "Slot"],
+      ["First Name", "Last Name", "Phone", "Email", "Class", "Slot", "Sessions Attended"],
       ...cls.members.map((m: any) => [
         m.first_name,
         m.last_name,
@@ -168,6 +180,7 @@ export default function ClassesPage() {
         m.email ?? "",
         cls.name,
         cls.slot,
+        countById[m.id] ?? 0,
       ]),
     ];
     const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");

@@ -349,3 +349,28 @@ CREATE INDEX IF NOT EXISTS idx_resources_is_published ON resources(is_published)
 -- pg_trgm indexes for fuzzy name matching
 CREATE INDEX IF NOT EXISTS idx_members_first_name_trgm ON members USING GIN (first_name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_members_last_name_trgm  ON members USING GIN (last_name  gin_trgm_ops);
+
+-- ============================================================
+-- TIME LOCKS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS time_locks (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  label       TEXT NOT NULL DEFAULT 'Sunday Service',
+  day_of_week SMALLINT NOT NULL DEFAULT 0 CHECK (day_of_week BETWEEN 0 AND 6),
+  start_time  TIME NOT NULL DEFAULT '08:00',
+  end_time    TIME NOT NULL DEFAULT '12:00',
+  timezone    TEXT NOT NULL DEFAULT 'Africa/Kigali',
+  is_active   BOOLEAN NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE time_locks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "admin_all_time_locks" ON time_locks
+  FOR ALL USING (auth.role() = 'authenticated');
+
+CREATE POLICY "public_read_time_locks" ON time_locks
+  FOR SELECT USING (true);
+
+CREATE INDEX IF NOT EXISTS idx_time_locks_active ON time_locks(is_active);

@@ -54,17 +54,23 @@ export default function DashboardPage() {
         { data: slotRaw },
         { data: weeklyRaw },
         { data: membersWithAttendance },
+        { data: settingsRaw },
       ] = await Promise.all([
         supabase.from("members").select("*", { count: "exact", head: true }),
         supabase.from("attendance").select("*", { count: "exact", head: true }).gte("attended_at", weekAgo.toISOString()),
-        supabase.from("classes").select("id, name, slot, capacity_max, members(count)").eq("is_active", true).order("name"),
+        supabase.from("classes").select("id, name, slot, members(count)").eq("is_active", true).order("name"),
         supabase.from("members").select("preferred_slot"),
         supabase.from("attendance").select("attended_at").gte("attended_at", new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString()),
         supabase.from("attendance").select("member_id").not("member_id", "is", null),
+        supabase.from("app_settings").select("key,value"),
       ]);
 
+      const settingsMap: Record<string, string> = {};
+      for (const row of settingsRaw ?? []) settingsMap[(row as any).key] = (row as any).value;
+      const maxPerClass = parseInt(settingsMap.max_members_per_class) || 15;
+
       const classFillData = (classes ?? []).map((c: any) => ({
-        name: c.name, count: c.members?.[0]?.count ?? 0, max: c.capacity_max,
+        name: c.name, count: c.members?.[0]?.count ?? 0, max: maxPerClass,
       }));
 
       const classesAtCapacity   = classFillData.filter((c) => c.count >= c.max).length;

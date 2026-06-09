@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle, ClipboardList, AlertCircle } from "lucide-react";
+import { CheckCircle, ClipboardList, AlertCircle, Lock } from "lucide-react";
 import { CLALogo } from "@/components/ui/CLALogo";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -11,6 +11,9 @@ import {
   getDistinctSlots,
   type ClassForAttendance,
 } from "@/actions/attendance";
+import { isFormLocked } from "@/actions/time-lock";
+
+const STORAGE_KEY = "cla_member_attendance";
 
 function formatSlotLabel(slot: string): string {
   const labels: Record<string, string> = {
@@ -31,6 +34,9 @@ export default function AttendancePage() {
   const [slots, setSlots]             = useState<string[]>([]);
   const [successData, setSuccessData] = useState<{ name: string; slot: string; class_name: string } | null>(null);
   const [suggestion, setSuggestion]   = useState<{ text: string; matchType: "reversed" | "fuzzy" } | null>(null);
+  const [timeLocked, setTimeLocked]   = useState(false);
+  const [lockChecked, setLockChecked] = useState(false);
+  const [prefillName, setPrefillName] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     first_name: "",
@@ -41,16 +47,64 @@ export default function AttendancePage() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Initial load: time lock check + class data in parallel
   useEffect(() => {
-    Promise.all([getClassesForAttendance(), getDistinctSlots()]).then(([classes, sl]) => {
+    Promise.all([
+      isFormLocked(),
+      getClassesForAttendance(),
+      getDistinctSlots(),
+    ]).then(([lockResult, classes, sl]) => {
+      setTimeLocked(lockResult.locked);
       setAllClasses(classes);
       setSlots(sl);
+      setLockChecked(true);
     });
   }, []);
+
+  // Pre-fill from localStorage once classes are loaded
+  useEffect(() => {
+    if (allClasses.length === 0) return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as {
+        firstName: string; lastName: string; phone: string; classId: string; slot: string;
+      };
+      if (allClasses.find((c) => c.id === data.classId)) {
+        setForm({
+          first_name: data.firstName,
+          last_name:  data.lastName,
+          phone:      data.phone,
+          slot:       data.slot,
+          class_id:   data.classId,
+        });
+        setPrefillName(data.firstName);
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, [allClasses]);
 
   function handleSlotChange(slot: string) {
     setForm((f) => ({ ...f, slot, class_id: "" }));
     setErrors((e) => ({ ...e, slot: "", class_id: "" }));
+    setSuggestion(null);
+  }
+
+  function clearPrefill() {
+    localStorage.removeItem(STORAGE_KEY);
+    setPrefillName(null);
+    setForm({ first_name: "", last_name: "", phone: "", slot: "", class_id: "" });
+  }
+
+  function handleMarkAnother() {
+    localStorage.removeItem(STORAGE_KEY);
+    setPrefillName(null);
+    setSubmitted(false);
+    setSuccessData(null);
+    setForm({ first_name: "", last_name: "", phone: "", slot: "", class_id: "" });
     setSuggestion(null);
   }
 
@@ -89,11 +143,57 @@ export default function AttendancePage() {
     }
 
     if ("success" in result && result.success) {
-      setSuccessData({ name: `${form.first_name.trim()} ${form.last_name.trim()}`, slot: result.slot!, class_name: result.class_name! });
+      // Persist this person's details for next visit
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          firstName: form.first_name.trim(),
+          lastName:  form.last_name.trim(),
+          phone:     form.phone.trim(),
+          classId:   form.class_id,
+          slot:      form.slot,
+        }));
+      } catch { /* localStorage unavailable */ }
+
+      setSuccessData({
+        name:       `${form.first_name.trim()} ${form.last_name.trim()}`,
+        slot:       result.slot!,
+        class_name: result.class_name!,
+      });
       setSubmitted(true);
     } else if ("error" in result) {
       setServerError(result.error ?? "Something went wrong. Please try again.");
     }
+  }
+
+  // ── LOADING ─────────────────────────────────────────────────
+  if (!lockChecked) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center" style={{ background: "var(--cla-bg-dark)" }}>
+        <div className="spinner" style={{ width: 32, height: 32, borderTopColor: "var(--cla-amber)", borderColor: "rgba(228,148,12,0.2)" }} />
+      </div>
+    );
+  }
+
+  // ── LOCKED ──────────────────────────────────────────────────
+  if (timeLocked) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center p-6 animate-fade-in" style={{ background: "var(--cla-bg-dark)" }}>
+        <div className="w-full max-w-sm flex flex-col items-center gap-6 text-center">
+          <CLALogo size="md" />
+          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.2)" }}>
+            <Lock size={30} style={{ color: "rgba(228,148,12,0.55)" }} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>
+              Attendance Closed
+            </h1>
+            <p className="mt-2 text-sm" style={{ color: "rgba(248,240,230,0.6)" }}>
+              Attendance can only be marked during Sunday service hours. Please come back when you're at church.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // ── SUCCESS ─────────────────────────────────────────────────
@@ -123,12 +223,7 @@ export default function AttendancePage() {
               <p className="font-semibold">{formatSlotLabel(successData.slot)}</p>
             </div>
           </div>
-          <Button variant="secondary" onClick={() => {
-            setSubmitted(false);
-            setSuccessData(null);
-            setForm({ first_name: "", last_name: "", phone: "", slot: "", class_id: "" });
-            setSuggestion(null);
-          }}>
+          <Button variant="secondary" onClick={handleMarkAnother}>
             Mark Another Person
           </Button>
         </div>
@@ -156,6 +251,24 @@ export default function AttendancePage() {
 
       <div className="flex-1 flex flex-col items-center px-4 py-6">
         <form onSubmit={(e) => handleSubmit(e)} className="w-full max-w-lg flex flex-col gap-5">
+
+          {/* Pre-fill indicator */}
+          {prefillName && (
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg text-sm"
+              style={{ background: "rgba(228,148,12,0.07)", border: "1px solid rgba(228,148,12,0.2)" }}>
+              <span style={{ color: "rgba(248,240,230,0.6)" }}>
+                Welcome back, <span className="font-semibold" style={{ color: "var(--cla-amber-light)" }}>{prefillName}</span>
+              </span>
+              <button
+                type="button"
+                onClick={clearPrefill}
+                className="text-xs font-bold shrink-0"
+                style={{ color: "rgba(248,240,230,0.4)" }}
+              >
+                Not {prefillName}?
+              </button>
+            </div>
+          )}
 
           {/* Name */}
           <div className="cla-card p-5 flex flex-col gap-3">

@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase-admin";
+import { isFormLocked } from "@/actions/time-lock";
 
 export interface AdminAttendanceRow {
   id: string;
@@ -93,6 +94,11 @@ export async function logAttendance(formData: {
   phone: string;
   class_id: string;
 }): Promise<AttendanceSubmitResult> {
+  const { locked } = await isFormLocked();
+  if (locked) {
+    return { success: false, error: "Attendance marking is currently closed. Please come back during service hours." };
+  }
+
   const admin = createAdminClient();
 
   const { data: cls, error: clsErr } = await admin
