@@ -78,20 +78,14 @@ export async function getDistinctSlots(): Promise<string[]> {
   return slots;
 }
 
-export type AttendanceNameMatch =
-  | { match_type: "exact"; member_id: string }
-  | { match_type: "reversed" | "fuzzy"; suggestion: string }
-  | { match_type: "none" };
-
 export type AttendanceSubmitResult =
   | { success: true; slot: string; class_name: string; linked: boolean }
   | { success: false; error: string }
-  | { needsSuggestion: true; suggestion: string; matchType: "reversed" | "fuzzy" };
+  | { needsSuggestion: true; suggestion: string; matchType: "reversed" };
 
 export async function logAttendance(formData: {
   first_name: string;
   last_name: string;
-  class_id: string;
 }): Promise<AttendanceSubmitResult> {
   const { locked } = await isFormLocked();
   if (locked) {
@@ -99,54 +93,50 @@ export async function logAttendance(formData: {
   }
 
   const admin = createAdminClient();
+  const fn = formData.first_name.trim();
+  const ln = formData.last_name.trim();
 
-  const { data: cls, error: clsErr } = await admin
-    .from("classes")
-    .select("id, name, slot")
-    .eq("id", formData.class_id)
-    .single();
+  // Exact case-insensitive match
+  const { data: exact } = await admin
+    .from("members")
+    .select("id, class_id, classes(name, slot)")
+    .ilike("first_name", fn)
+    .ilike("last_name", ln)
+    .limit(2);
 
-  if (clsErr || !cls) return { success: false, error: "Class not found." };
-
-  const memberName = `${formData.first_name.trim()} ${formData.last_name.trim()}`;
-
-  const { data: matchResult, error: matchErr } = await admin.rpc("match_attendance_name", {
-    p_first_name: formData.first_name.trim(),
-    p_last_name:  formData.last_name.trim(),
-    p_class_id:   formData.class_id,
-  });
-
-  if (matchErr || !matchResult) {
-    return { success: false, error: "Could not verify your name. Please try again." };
+  if (exact && exact.length >= 1) {
+    const member = exact[0] as any;
+    const cls = member.classes;
+    const { error } = await admin.from("attendance").insert({
+      member_name:  `${fn} ${ln}`,
+      class_id:     member.class_id,
+      service_slot: cls.slot,
+      attended_at:  new Date().toISOString(),
+      member_id:    member.id,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, slot: cls.slot, class_name: cls.name, linked: true };
   }
 
-  const match = matchResult as AttendanceNameMatch;
+  // Try reversed name order
+  const { data: reversed } = await admin
+    .from("members")
+    .select("id, first_name, last_name")
+    .ilike("first_name", ln)
+    .ilike("last_name", fn)
+    .limit(1);
 
-  if (match.match_type === "reversed" || match.match_type === "fuzzy") {
+  if (reversed && reversed.length > 0) {
+    const m = reversed[0] as any;
     return {
       needsSuggestion: true,
-      suggestion: match.suggestion,
-      matchType: match.match_type,
+      suggestion: `${m.first_name} ${m.last_name}`,
+      matchType: "reversed",
     };
   }
 
-  if (match.match_type === "none") {
-    return {
-      success: false,
-      error: "Your name was not found in this class. Make sure you are registered and have selected the correct class and time slot.",
-    };
-  }
-
-  const exactMatch = match as Extract<AttendanceNameMatch, { match_type: "exact" }>;
-
-  const { error } = await admin.from("attendance").insert({
-    member_name:  memberName,
-    class_id:     formData.class_id,
-    service_slot: cls.slot,
-    attended_at:  new Date().toISOString(),
-    member_id:    exactMatch.member_id,
-  });
-
-  if (error) return { success: false, error: error.message };
-  return { success: true, slot: cls.slot, class_name: cls.name, linked: true };
+  return {
+    success: false,
+    error: "Your name was not found. Make sure you are registered and enter your name exactly as you registered.",
+  };
 }
