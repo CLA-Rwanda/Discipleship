@@ -44,6 +44,7 @@ export default function RegisterPage() {
     email:          "",
     preferred_slot: "",
   });
+  const [consent, setConsent]         = useState(false);
   const [errors, setErrors]           = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState("");
 
@@ -90,6 +91,7 @@ export default function RegisterPage() {
     if (!form.last_name.trim())      e.last_name      = "Last name is required";
     if (!form.phone.trim())          e.phone          = "Phone number is required";
     if (!form.preferred_slot)        e.preferred_slot = "Please select a service time";
+    if (!consent)                    e.consent        = "You must agree to continue";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -147,6 +149,7 @@ export default function RegisterPage() {
   function resetForm() {
     setStep("form");
     setForm({ first_name: "", last_name: "", phone: "", email: "", preferred_slot: "" });
+    setConsent(false);
     setSuccessData(null);
     setDupResult(null);
     setServerError("");
@@ -370,6 +373,40 @@ export default function RegisterPage() {
               <p className="text-xs" style={{ color: "#ff6b6b" }}>{errors.preferred_slot}</p>
             )}
           </div>
+
+          {/* Consent */}
+          <label className="flex items-start gap-3 cursor-pointer select-none">
+            <div className="relative shrink-0 mt-0.5">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => { setConsent(e.target.checked); setErrors((ev) => ({ ...ev, consent: "" })); }}
+                className="sr-only"
+              />
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center transition-all"
+                style={{
+                  background: consent ? "var(--cla-amber)" : "rgba(255,255,255,0.07)",
+                  border: `2px solid ${consent ? "var(--cla-amber)" : errors.consent ? "#c02828" : "rgba(228,148,12,0.4)"}`,
+                  boxShadow: errors.consent && !consent ? "0 0 0 3px rgba(192,40,40,0.15)" : "none",
+                }}
+              >
+                {consent && (
+                  <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
+                    <path d="M1 4L4 7L10 1" stroke="#200909" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm" style={{ color: "rgba(248,240,230,0.8)" }}>
+                I consent to my personal data (name, phone, email) being shared with the CLA discipleship team for class management and follow-up purposes.
+              </span>
+              {errors.consent && (
+                <span className="text-xs" style={{ color: "#ff6b6b" }}>{errors.consent}</span>
+              )}
+            </div>
+          </label>
 
           {serverError && (
             <div className="p-4 rounded-lg text-sm" style={{ background: "rgba(139,26,26,0.15)", border: "1px solid rgba(139,26,26,0.3)", color: "#ff6b6b" }}>

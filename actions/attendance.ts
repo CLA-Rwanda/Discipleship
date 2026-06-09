@@ -89,7 +89,7 @@ export async function logAttendance(formData: {
 }): Promise<AttendanceSubmitResult> {
   const { locked } = await isFormLocked();
   if (locked) {
-    return { success: false, error: "Attendance marking is currently closed. Please come back during service hours." };
+    return { success: false, error: "Thank you for attending. Registration  is only active during class time." };
   }
 
   const admin = createAdminClient();
