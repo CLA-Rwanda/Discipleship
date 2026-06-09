@@ -31,7 +31,7 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="flex min-h-dvh" style={{ background: "var(--cla-bg-dark)" }}>
+    <div className="flex h-dvh overflow-hidden" style={{ background: "var(--cla-bg-dark)" }}>
       {/* Mobile backdrop */}
       {sidebarOpen && (
         <div
@@ -41,7 +41,7 @@ export default function AdminLayout({
         />
       )}
 
-      {/* Sidebar — fixed overlay on mobile, normal flow on desktop */}
+      {/* Sidebar — fixed overlay on mobile, pinned column on desktop */}
       <div
         className={`fixed inset-y-0 left-0 z-30 lg:relative lg:flex-none transition-transform duration-200 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
@@ -50,11 +50,11 @@ export default function AdminLayout({
         <AdminSidebar onClose={() => setSidebarOpen(false)} />
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar */}
+      {/* Main content — fills remaining width, clips its own overflow */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Mobile top bar — pinned by being outside the scrollable <main> */}
         <div
-          className="lg:hidden sticky top-0 z-10 flex items-center gap-3 px-4 py-3 shrink-0"
+          className="lg:hidden flex items-center gap-3 px-4 py-3 shrink-0 z-10"
           style={{
             background: "#190606",
             borderBottom: "1px solid rgba(228,148,12,0.12)",
@@ -71,7 +71,7 @@ export default function AdminLayout({
           <CLALogo layout="inline" size="sm" />
         </div>
 
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
       </div>
     </div>
   );
