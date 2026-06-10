@@ -6,11 +6,11 @@ import { CLALogo } from "@/components/ui/CLALogo";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { SlotPicker } from "@/components/ui/SlotPicker";
-import { registerMember, getSlotCapacities } from "@/actions/register";
+import { registerMember, getSlotCapacities, addToPendingList } from "@/actions/register";
 import { checkPhoneDuplicate, type DuplicateCheckResult } from "@/actions/check-duplicate";
 import { isFormLocked } from "@/actions/time-lock";
 
-type Step = "form" | "slot-conflict" | "success";
+type Step = "form" | "slot-conflict" | "success" | "pending";
 
 interface SlotCap {
   slot: string;
@@ -118,6 +118,16 @@ export default function RegisterPage() {
     } else if (result.error === "slot_full" && result.alternativeSlots) {
       setAltSlots(result.alternativeSlots.filter((s) => s.remaining > 0));
       setStep("slot-conflict");
+    } else if (result.error === "all_full") {
+      // All classes full — add to waitlist silently, show pending screen
+      await addToPendingList({
+        first_name:     form.first_name.trim(),
+        last_name:      form.last_name.trim(),
+        phone:          form.phone.trim(),
+        email:          form.email.trim() || undefined,
+        preferred_slot: form.preferred_slot,
+      });
+      setStep("pending");
     } else {
       setServerError(result.error ?? "Something went wrong. Please try again.");
     }
@@ -224,6 +234,49 @@ export default function RegisterPage() {
           <p className="text-sm text-center" style={{ color: "rgba(248,240,230,0.5)" }}>
             We look forward to seeing you! Your facilitator will guide you through the class.
           </p>
+          <Button variant="secondary" onClick={resetForm}>
+            Register Another Person
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── PENDING / WAITLIST ───────────────────────────────────────
+  if (step === "pending") {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center p-6 animate-fade-in" style={{ background: "var(--cla-bg-dark)" }}>
+        <div className="w-full max-w-sm flex flex-col items-center gap-6 text-center">
+          <CLALogo size="md" />
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(228,148,12,0.12)", border: "1px solid rgba(228,148,12,0.3)" }}
+          >
+            <Users size={30} style={{ color: "var(--cla-amber)" }} />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold mb-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>
+              You're on the Waitlist!
+            </h1>
+            <p style={{ color: "rgba(248,240,230,0.7)" }}>
+              Our discipleship classes are currently full, {form.first_name}. You've been added to the waitlist.
+            </p>
+          </div>
+          <div
+            className="w-full rounded-xl p-5 text-left flex flex-col gap-3"
+            style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.25)" }}
+          >
+            <p className="text-sm font-semibold" style={{ color: "var(--cla-amber-light)" }}>What happens next?</p>
+            <p className="text-sm" style={{ color: "rgba(248,240,230,0.65)", lineHeight: 1.7 }}>
+              We will review the waitlist and reach out to you personally if a spot opens. Waitlist spots are offered on a first-come, first-served basis.
+            </p>
+            {form.phone && (
+              <div className="pt-1" style={{ borderTop: "1px solid rgba(228,148,12,0.15)" }}>
+                <p className="text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>We'll contact you on</p>
+                <p className="text-sm font-semibold mt-0.5" style={{ color: "var(--cla-off-white)" }}>{form.phone}</p>
+              </div>
+            )}
+          </div>
           <Button variant="secondary" onClick={resetForm}>
             Register Another Person
           </Button>

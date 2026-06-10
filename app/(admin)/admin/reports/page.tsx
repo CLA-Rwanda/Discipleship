@@ -314,9 +314,9 @@ export default function ReportsPage() {
                 <p className="text-xs" style={{ color: "rgba(248,240,230,0.5)" }}>
                   {fmtDate(preview.dateFrom)} — {fmtDate(preview.dateTo)} ·{" "}
                   <span style={{ color: "var(--cla-amber)" }}>
-                    {preview.totalAttendance} total attended
-                  </span>{" "}
-                  across {preview.classes.length} {preview.classes.length === 1 ? "class" : "classes"}
+                    {preview.classes.reduce((s, c) => s + c.uniqueMembers, 0)} unique members
+                  </span>
+                  {" · "}{preview.totalAttendance} sessions · {preview.classes.length} {preview.classes.length === 1 ? "class" : "classes"}
                 </p>
               </div>
             </div>
@@ -356,15 +356,20 @@ export default function ReportsPage() {
                       {SLOT_LABELS[cls.slot] ?? cls.slot}
                     </span>
                   </div>
-                  <span
-                    className="text-xs font-bold"
-                    style={{
-                      fontFamily: "Barlow Condensed, sans-serif",
-                      color: cls.attendanceCount > 0 ? "var(--cla-amber)" : "rgba(248,240,230,0.3)",
-                    }}
-                  >
-                    {cls.attendanceCount} attended
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="text-xs font-bold"
+                      style={{
+                        fontFamily: "Barlow Condensed, sans-serif",
+                        color: cls.uniqueMembers > 0 ? "var(--cla-amber)" : "rgba(248,240,230,0.3)",
+                      }}
+                    >
+                      {cls.uniqueMembers} {cls.uniqueMembers === 1 ? "member" : "members"}
+                    </span>
+                    <span className="text-xs" style={{ color: "rgba(248,240,230,0.3)" }}>
+                      {cls.attendanceCount} sessions
+                    </span>
+                  </div>
                 </div>
 
                 {cls.members.length === 0 ? (
@@ -375,33 +380,30 @@ export default function ReportsPage() {
                   <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(228,148,12,0.1)" }}>
                     <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
                       <thead>
-                        <tr style={{ borderBottom: "1px solid rgba(228,148,12,0.1)" }}>
-                          <th
-                            className="text-left px-3 py-2 text-xs font-bold"
-                            style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.4)", letterSpacing: "0.05em" }}
-                          >
+                        <tr style={{ background: "rgba(34,16,16,0.8)", borderBottom: "1px solid rgba(228,148,12,0.1)" }}>
+                          <th className="text-left px-3 py-2 text-xs font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.4)", letterSpacing: "0.05em", width: "40%" }}>
                             NAME
                           </th>
-                          <th
-                            className="text-right px-3 py-2 text-xs font-bold"
-                            style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.4)", letterSpacing: "0.05em" }}
-                          >
-                            DATE
+                          <th className="text-center px-3 py-2 text-xs font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.4)", letterSpacing: "0.05em", width: "15%" }}>
+                            SESSIONS
+                          </th>
+                          <th className="text-left px-3 py-2 text-xs font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.4)", letterSpacing: "0.05em" }}>
+                            DATES
                           </th>
                         </tr>
                       </thead>
                       <tbody>
                         {cls.members.map((m, i) => (
                           <tr
-                            key={`${m.name}-${m.attended_at}`}
+                            key={m.name}
                             style={{ background: i % 2 === 0 ? "transparent" : "rgba(228,148,12,0.03)" }}
                           >
-                            <td className="px-3 py-2" style={{ color: "#E8E0D8" }}>{m.name}</td>
-                            <td
-                              className="px-3 py-2 text-right text-xs"
-                              style={{ color: "rgba(248,240,230,0.3)", whiteSpace: "nowrap" }}
-                            >
-                              {fmtDate(m.attended_at)}
+                            <td className="px-3 py-2 text-sm" style={{ color: "#E8E0D8" }}>{m.name}</td>
+                            <td className="px-3 py-2 text-center font-bold text-sm" style={{ fontFamily: "Barlow Condensed, sans-serif", color: m.sessions >= 3 ? "#C8D400" : "var(--cla-amber)" }}>
+                              {m.sessions}
+                            </td>
+                            <td className="px-3 py-2 text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>
+                              {m.dates.map((d) => fmtDate(d)).join(" · ")}
                             </td>
                           </tr>
                         ))}

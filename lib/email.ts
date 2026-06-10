@@ -21,49 +21,64 @@ export function buildReportEmail(data: {
     name: string;
     slot: string;
     attendanceCount: number;
-    members: { name: string; attended_at: string }[];
+    uniqueMembers: number;
+    members: { name: string; sessions: number; dates: string[] }[];
   }[];
   totalAttendance: number;
 }): string {
   const { facilitatorName, dateFrom, dateTo, classes, totalAttendance } = data;
 
+  const fmtShort = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+
+  const totalUnique = classes.reduce((sum, c) => sum + c.uniqueMembers, 0);
+
   const classRows = classes
     .map(
       (cls) => `
     <div style="margin-bottom:28px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+      <!-- Class header -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:0;">
         <tr>
-          <td style="padding:10px 14px;background:#2E0A0A;border-left:3px solid #D4860A;border-radius:6px 6px 0 0;">
-            <span style="font-family:'Barlow Condensed',Arial,sans-serif;font-weight:700;font-size:15px;color:#F0A500;letter-spacing:0.06em;">
-              ${cls.name}
-            </span>
-            <span style="font-family:Arial,sans-serif;font-size:12px;color:rgba(232,224,216,0.5);margin-left:10px;">
-              ${cls.slot} · ${cls.attendanceCount} attended
-            </span>
+          <td style="padding:10px 16px;background:#2E0A0A;border-left:3px solid #D4860A;border-radius:6px 6px 0 0;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <span style="font-family:'Barlow Condensed',Arial,sans-serif;font-weight:700;font-size:16px;color:#F0A500;letter-spacing:0.05em;">${cls.name}</span>
+                  <span style="font-family:Arial,sans-serif;font-size:12px;color:rgba(232,224,216,0.45);margin-left:10px;">${cls.slot.toUpperCase()}</span>
+                </td>
+                <td style="text-align:right;white-space:nowrap;">
+                  <span style="font-family:'Barlow Condensed',Arial,sans-serif;font-size:18px;font-weight:700;color:#F0A500;">${cls.uniqueMembers}</span>
+                  <span style="font-family:Arial,sans-serif;font-size:11px;color:rgba(232,224,216,0.4);margin-left:4px;">members · ${cls.attendanceCount} sessions</span>
+                </td>
+              </tr>
+            </table>
           </td>
         </tr>
-        ${
-          cls.members.length === 0
-            ? `<tr><td style="padding:12px 14px;background:#1A0505;color:rgba(232,224,216,0.4);font-size:13px;border-radius:0 0 6px 6px;">No attendance recorded for this class in the selected period.</td></tr>`
-            : cls.members
-                .map(
-                  (m, i) => `
-          <tr style="background:${i % 2 === 0 ? "#1A0505" : "#200808"};">
-            <td style="padding:9px 14px;">
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td style="font-family:Arial,sans-serif;font-size:13px;color:#E8E0D8;">${m.name}</td>
-                  <td style="font-family:Arial,sans-serif;font-size:11px;color:rgba(232,224,216,0.3);text-align:right;white-space:nowrap;">
-                    ${new Date(m.attended_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>`
-                )
-                .join("")
-        }
       </table>
+      <!-- Member rows -->
+      ${
+        cls.members.length === 0
+          ? `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr><td style="padding:12px 16px;background:#1A0505;color:rgba(232,224,216,0.4);font-size:13px;font-family:Arial,sans-serif;border-radius:0 0 6px 6px;">No attendance recorded in this period.</td></tr></table>`
+          : `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+          <!-- Column headers -->
+          <tr style="background:#221010;">
+            <th style="padding:7px 16px;text-align:left;font-family:'Barlow Condensed',Arial,sans-serif;font-size:11px;font-weight:700;color:rgba(212,134,10,0.6);letter-spacing:0.1em;text-transform:uppercase;width:45%;">NAME</th>
+            <th style="padding:7px 8px;text-align:center;font-family:'Barlow Condensed',Arial,sans-serif;font-size:11px;font-weight:700;color:rgba(212,134,10,0.6);letter-spacing:0.1em;text-transform:uppercase;width:15%;">SESSIONS</th>
+            <th style="padding:7px 16px 7px 8px;text-align:left;font-family:'Barlow Condensed',Arial,sans-serif;font-size:11px;font-weight:700;color:rgba(212,134,10,0.6);letter-spacing:0.1em;text-transform:uppercase;">DATES ATTENDED</th>
+          </tr>
+          ${cls.members
+            .map(
+              (m, i) => `
+          <tr style="background:${i % 2 === 0 ? "#1A0505" : "#1E0808"};">
+            <td style="padding:9px 16px;font-family:Arial,sans-serif;font-size:13px;color:#E8E0D8;">${m.name}</td>
+            <td style="padding:9px 8px;text-align:center;font-family:'Barlow Condensed',Arial,sans-serif;font-size:15px;font-weight:700;color:${m.sessions >= 3 ? "#C8D400" : "#F0A500"};">${m.sessions}</td>
+            <td style="padding:9px 16px 9px 8px;font-family:Arial,sans-serif;font-size:11px;color:rgba(232,224,216,0.45);">${m.dates.map(fmtShort).join("&nbsp;&nbsp;·&nbsp;&nbsp;")}</td>
+          </tr>`
+            )
+            .join("")}
+        </table>`
+      }
     </div>`
     )
     .join("");
@@ -118,8 +133,12 @@ export function buildReportEmail(data: {
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
                         <td style="text-align:center;border-right:1px solid rgba(212,134,10,0.15);padding-right:12px;">
+                          <p style="margin:0;font-family:'Barlow Condensed',Arial,sans-serif;font-size:28px;font-weight:800;color:#F0A500;">${totalUnique}</p>
+                          <p style="margin:2px 0 0;font-size:11px;color:rgba(232,224,216,0.45);letter-spacing:0.05em;text-transform:uppercase;">Unique Members</p>
+                        </td>
+                        <td style="text-align:center;border-right:1px solid rgba(212,134,10,0.15);padding:0 12px;">
                           <p style="margin:0;font-family:'Barlow Condensed',Arial,sans-serif;font-size:28px;font-weight:800;color:#F0A500;">${totalAttendance}</p>
-                          <p style="margin:2px 0 0;font-size:11px;color:rgba(232,224,216,0.45);letter-spacing:0.05em;text-transform:uppercase;">Total Attended</p>
+                          <p style="margin:2px 0 0;font-size:11px;color:rgba(232,224,216,0.45);letter-spacing:0.05em;text-transform:uppercase;">Total Sessions</p>
                         </td>
                         <td style="text-align:center;padding-left:12px;">
                           <p style="margin:0;font-family:'Barlow Condensed',Arial,sans-serif;font-size:28px;font-weight:800;color:#F0A500;">${classes.length}</p>

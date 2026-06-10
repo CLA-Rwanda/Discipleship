@@ -14,11 +14,18 @@ async function assertAdmin() {
   return user;
 }
 
+export interface ReportMember {
+  name: string;
+  sessions: number;
+  dates: string[];
+}
+
 export interface ReportClass {
   name: string;
   slot: string;
   attendanceCount: number;
-  members: { name: string; attended_at: string }[];
+  uniqueMembers: number;
+  members: ReportMember[];
 }
 
 export interface ReportPreviewData {
@@ -93,14 +100,24 @@ export async function getReportPreview(
 
     const reportClasses: ReportClass[] = classes.map((cls) => {
       const clsAttendance = attendanceRows.filter((a) => a.class_id === cls.id);
+
+      // Aggregate: one entry per unique member with all their session dates
+      const memberMap = new Map<string, string[]>();
+      for (const a of clsAttendance) {
+        const existing = memberMap.get(a.member_name) ?? [];
+        existing.push(a.attended_at);
+        memberMap.set(a.member_name, existing);
+      }
+      const members: ReportMember[] = Array.from(memberMap.entries())
+        .map(([name, dates]) => ({ name, sessions: dates.length, dates: dates.slice().sort() }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
       return {
         name: cls.name,
         slot: cls.slot,
         attendanceCount: clsAttendance.length,
-        members: clsAttendance.map((a) => ({
-          name: a.member_name,
-          attended_at: a.attended_at,
-        })),
+        uniqueMembers: members.length,
+        members,
       };
     });
 
