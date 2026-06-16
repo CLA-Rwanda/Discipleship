@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { ADMIN_EMAIL } from "@/lib/config";
 import { getResend, FROM_EMAIL, buildReportEmail } from "@/lib/email";
-import { getSundaysBetween } from "@/actions/attendance-grid";
+import { getSundaysBetween } from "@/lib/dates";
 
 async function assertAdmin() {
   const supabase = createServerSupabaseClient();
