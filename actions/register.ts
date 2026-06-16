@@ -63,13 +63,14 @@ export async function registerMember(formData: {
 
   const supabase = createServerSupabaseClient();
 
+  // RPC signature is unchanged (5 params) — no schema cache reload needed.
+  // other_name is written via a separate UPDATE after insert.
   const { data, error } = await supabase.rpc("assign_member_to_class", {
     p_first_name:     fn,
     p_last_name:      ln,
     p_phone:          formData.phone.trim(),
     p_email:          formData.email?.trim() || null,
     p_preferred_slot: formData.preferred_slot,
-    p_other_name:     on || null,
   });
 
   if (error) return { success: false, error: error.message };
@@ -77,6 +78,7 @@ export async function registerMember(formData: {
 
   const result = data as {
     status: string;
+    member_id?: string;
     class_name?: string;
     slot?: string;
     facilitator_name?: string;
@@ -84,11 +86,15 @@ export async function registerMember(formData: {
   };
 
   if (result.status === "assigned") {
+    // Store other_name now that we have the member_id
+    if (on && result.member_id) {
+      await admin.from("members").update({ other_name: on }).eq("id", result.member_id);
+    }
     return {
       success: true,
       member: {
-        first_name: formData.first_name.trim(),
-        last_name:  formData.last_name.trim(),
+        first_name: fn,
+        last_name:  ln,
         class_name: result.class_name!,
         slot:       result.slot!,
         facilitator_name: result.facilitator_name,

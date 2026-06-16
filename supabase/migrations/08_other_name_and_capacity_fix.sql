@@ -1,5 +1,5 @@
 -- ============================================================
--- Migration 08: other_name column + capacity fix + RPC update
+-- Migration 08: other_name column + capacity fix
 -- Run in Supabase SQL Editor
 -- ============================================================
 
@@ -17,17 +17,17 @@ BEGIN
   END IF;
 END $$;
 
--- ── 3. Update assign_member_to_class RPC ─────────────────────
---      Reads max_members_per_class from app_settings at runtime
---      so changes take effect without touching per-class rows.
---      Also accepts p_other_name for deduplication.
+-- ── 3. Update assign_member_to_class RPC (body only) ─────────
+--      Keeps the SAME 5-parameter signature (no schema-cache
+--      reload needed). Reads max_members_per_class from
+--      app_settings at runtime so admin setting changes take
+--      effect immediately.
 CREATE OR REPLACE FUNCTION assign_member_to_class(
   p_first_name     TEXT,
   p_last_name      TEXT,
   p_phone          TEXT,
-  p_email          TEXT    DEFAULT NULL,
-  p_preferred_slot TEXT    DEFAULT NULL,
-  p_other_name     TEXT    DEFAULT NULL
+  p_email          TEXT DEFAULT NULL,
+  p_preferred_slot TEXT DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -47,7 +47,7 @@ DECLARE
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtext('assign_member_' || p_phone));
 
-  -- Read effective capacity from settings (authoritative source)
+  -- Read effective capacity from settings (falls back to 15)
   SELECT COALESCE(value::INT, 15)
   INTO   v_capacity_max
   FROM   app_settings
@@ -70,20 +70,20 @@ BEGIN
   FOR UPDATE OF c;
 
   IF v_class_id IS NOT NULL THEN
-    INSERT INTO members (first_name, last_name, other_name, phone, email, preferred_slot, class_id)
-    VALUES (p_first_name, p_last_name, NULLIF(TRIM(COALESCE(p_other_name, '')), ''), p_phone, p_email, v_slot, v_class_id)
+    INSERT INTO members (first_name, last_name, phone, email, preferred_slot, class_id)
+    VALUES (p_first_name, p_last_name, p_phone, p_email, v_slot, v_class_id)
     RETURNING id INTO v_member_id;
 
     RETURN jsonb_build_object(
       'status',           'assigned',
-      'member_id',        v_member_id,
+      'member_id',        v_member_id::text,
       'class_name',       v_class_name,
       'slot',             v_slot,
       'facilitator_name', v_facilitator_name
     );
   END IF;
 
-  -- Preferred slot full — find alternatives
+  -- Preferred slot full — find alternatives using same capacity
   FOR v_alt_slot IN (
     SELECT DISTINCT slot FROM classes
     WHERE  is_active = true AND slot <> v_slot
