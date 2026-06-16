@@ -40,10 +40,12 @@ export default function RegisterPage() {
   const [form, setForm] = useState({
     first_name:     "",
     last_name:      "",
+    other_name:     "",
     phone:          "",
     email:          "",
     preferred_slot: "",
   });
+  const [nameConflict, setNameConflict] = useState(false);
   const [consent, setConsent]         = useState(false);
   const [errors, setErrors]           = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState("");
@@ -92,6 +94,8 @@ export default function RegisterPage() {
     if (!form.phone.trim())          e.phone          = "Phone number is required";
     if (!form.preferred_slot)        e.preferred_slot = "Please select a service time";
     if (!consent)                    e.consent        = "You must agree to continue";
+    if (nameConflict && !form.other_name.trim())
+      e.other_name = "Required — someone with this name is already registered. Add a middle name or nickname.";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -105,6 +109,7 @@ export default function RegisterPage() {
     const result = await registerMember({
       first_name:     form.first_name.trim(),
       last_name:      form.last_name.trim(),
+      other_name:     form.other_name.trim() || undefined,
       phone:          form.phone.trim(),
       email:          form.email.trim() || undefined,
       preferred_slot: form.preferred_slot,
@@ -115,11 +120,15 @@ export default function RegisterPage() {
     if (result.success && result.member) {
       setSuccessData(result.member);
       setStep("success");
+    } else if (result.error === "name_taken") {
+      setNameConflict(true);
+      setErrors((e) => ({ ...e, other_name: "Someone with this name is already registered. Please add a middle name, nickname, or other name to distinguish yourself." }));
+    } else if (result.error === "already_registered") {
+      setServerError("You appear to already be registered. Please check with your facilitator if you need help.");
     } else if (result.error === "slot_full" && result.alternativeSlots) {
       setAltSlots(result.alternativeSlots.filter((s) => s.remaining > 0));
       setStep("slot-conflict");
     } else if (result.error === "all_full") {
-      // All classes full — add to waitlist silently, show pending screen
       await addToPendingList({
         first_name:     form.first_name.trim(),
         last_name:      form.last_name.trim(),
@@ -141,6 +150,7 @@ export default function RegisterPage() {
     const result = await registerMember({
       first_name:     form.first_name.trim(),
       last_name:      form.last_name.trim(),
+      other_name:     form.other_name.trim() || undefined,
       phone:          form.phone.trim(),
       email:          form.email.trim() || undefined,
       preferred_slot: selectedAlt,
@@ -158,11 +168,13 @@ export default function RegisterPage() {
 
   function resetForm() {
     setStep("form");
-    setForm({ first_name: "", last_name: "", phone: "", email: "", preferred_slot: "" });
+    setForm({ first_name: "", last_name: "", other_name: "", phone: "", email: "", preferred_slot: "" });
+    setNameConflict(false);
     setConsent(false);
     setSuccessData(null);
     setDupResult(null);
     setServerError("");
+    setErrors({});
   }
 
   // ── LOADING ─────────────────────────────────────────────────
@@ -352,7 +364,7 @@ export default function RegisterPage() {
                 label="First Name"
                 placeholder="e.g. Amara"
                 value={form.first_name}
-                onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
+                onChange={(e) => { setForm((f) => ({ ...f, first_name: e.target.value })); setNameConflict(false); setErrors((ev) => ({ ...ev, other_name: "" })); }}
                 error={errors.first_name}
                 required
               />
@@ -360,11 +372,32 @@ export default function RegisterPage() {
                 label="Last Name"
                 placeholder="e.g. Johnson"
                 value={form.last_name}
-                onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
+                onChange={(e) => { setForm((f) => ({ ...f, last_name: e.target.value })); setNameConflict(false); setErrors((ev) => ({ ...ev, other_name: "" })); }}
                 error={errors.last_name}
                 required
               />
             </div>
+
+            {/* Other name — shown when there's a name conflict, or if pre-filled */}
+            {(nameConflict || form.other_name) && (
+              <div className="flex flex-col gap-1.5">
+                {nameConflict && (
+                  <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg text-xs" style={{ background: "rgba(228,148,12,0.1)", border: "1px solid rgba(228,148,12,0.3)", color: "var(--cla-amber-light)" }}>
+                    <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                    <span>Someone with the name <strong>{form.first_name} {form.last_name}</strong> is already registered. Please add a middle name, nickname, or other name to tell you apart.</span>
+                  </div>
+                )}
+                <Input
+                  label={nameConflict ? "Other Name (required)" : "Other Name (optional)"}
+                  placeholder="Middle name, nickname, etc."
+                  value={form.other_name}
+                  onChange={(e) => { setForm((f) => ({ ...f, other_name: e.target.value })); setErrors((ev) => ({ ...ev, other_name: "" })); }}
+                  error={errors.other_name}
+                  required={nameConflict}
+                  hint={nameConflict ? undefined : "Add if you share a name with someone else"}
+                />
+              </div>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <Input

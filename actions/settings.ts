@@ -20,5 +20,14 @@ export async function updateAppSetting(
     .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
 
   if (error) return { success: false, error: error.message };
+
+  // Keep classes.capacity_max in sync so the RPC and slot-capacity display stay accurate
+  if (key === "max_members_per_class") {
+    const cap = parseInt(value, 10);
+    if (!isNaN(cap) && cap > 0) {
+      await admin.from("classes").update({ capacity_max: cap, capacity_min: cap }).eq("is_active", true);
+    }
+  }
+
   return { success: true };
 }

@@ -95,6 +95,8 @@ export default function SettingsPage() {
   const totalSessions  = parseInt(appSettings.total_sessions) || 0;
   const thresholdPct   = parseInt(appSettings.attendance_threshold_pct) || 0;
   const maxPerClass    = parseInt(appSettings.max_members_per_class) || 0;
+  const maxClasses     = parseInt(appSettings.max_classes) || 0;
+  const totalCapacity  = maxClasses * maxPerClass;
   const sessionsReq    = Math.ceil((totalSessions * thresholdPct) / 100);
 
   async function handleSaveSetting(key: string) {
@@ -271,7 +273,12 @@ export default function SettingsPage() {
               ))}
 
               {/* Live calculations */}
-              <div className="pt-2" style={{ borderTop: "1px solid rgba(228,148,12,0.1)" }}>
+              <div className="pt-2 grid grid-cols-2 gap-3" style={{ borderTop: "1px solid rgba(228,148,12,0.1)" }}>
+                <div className="p-3 rounded-lg" style={{ background: "rgba(228,148,12,0.06)", border: "1px solid rgba(228,148,12,0.15)" }}>
+                  <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Total Capacity</p>
+                  <p className="text-2xl font-extrabold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "var(--cla-amber)" }}>{totalCapacity}</p>
+                  <p className="text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>{maxClasses} classes × {maxPerClass} members</p>
+                </div>
                 <div className="p-3 rounded-lg" style={{ background: "rgba(200,212,0,0.06)", border: "1px solid rgba(200,212,0,0.15)" }}>
                   <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Sessions Required</p>
                   <p className="text-2xl font-extrabold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "#C8D400" }}>{sessionsReq}</p>

@@ -27,20 +27,49 @@ export async function registerMember(formData: {
   phone: string;
   email?: string;
   preferred_slot: string;
+  other_name?: string;
 }): Promise<RegistrationResult> {
   const { locked } = await isFormLocked();
   if (locked) {
     return { success: false, error: "Registration is currently closed. Please come back during service hours." };
   }
 
+  const admin = createAdminClient();
+  const fn = formData.first_name.trim();
+  const ln = formData.last_name.trim();
+  const on = (formData.other_name ?? "").trim();
+
+  // Prevent duplicate registrations by name before calling the RPC
+  const { data: nameMatches } = await admin
+    .from("members")
+    .select("id, other_name")
+    .ilike("first_name", fn)
+    .ilike("last_name", ln);
+
+  if (nameMatches && nameMatches.length > 0) {
+    if (!on) {
+      // Same first+last exists — ask the user to add an other name
+      return { success: false, error: "name_taken" };
+    }
+    // Check if exact triple (first+last+other) is already registered
+    const exactDup = nameMatches.some(
+      (m) => (m.other_name ?? "").toLowerCase() === on.toLowerCase()
+    );
+    if (exactDup) {
+      return { success: false, error: "already_registered" };
+    }
+    // Different other_name → different person; proceed
+  }
+
   const supabase = createServerSupabaseClient();
 
   const { data, error } = await supabase.rpc("assign_member_to_class", {
-    p_first_name:     formData.first_name.trim(),
-    p_last_name:      formData.last_name.trim(),
+    p_first_name:     fn,
+    p_last_name:      ln,
     p_phone:          formData.phone.trim(),
     p_email:          formData.email?.trim() || null,
     p_preferred_slot: formData.preferred_slot,
+    p_other_name:     on || null,
   });
 
   if (error) return { success: false, error: error.message };

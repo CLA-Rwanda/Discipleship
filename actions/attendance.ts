@@ -104,7 +104,14 @@ export async function logAttendance(formData: {
     .ilike("last_name", ln)
     .limit(2);
 
-  if (exact && exact.length >= 1) {
+  if (exact && exact.length > 1) {
+    return {
+      success: false,
+      error: "Multiple people with this name were found. Please see your facilitator to record your attendance.",
+    };
+  }
+
+  if (exact && exact.length === 1) {
     const member = exact[0] as any;
     const cls = member.classes;
     const { error } = await admin.from("attendance").insert({
