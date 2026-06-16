@@ -5,6 +5,8 @@ export interface AppSettings {
   attendance_threshold_pct: number;
   max_members_per_class: number;
   max_classes: number;
+  registration_open: boolean;
+  class_start_date: string;
 }
 
 const DEFAULTS: AppSettings = {
@@ -12,6 +14,8 @@ const DEFAULTS: AppSettings = {
   attendance_threshold_pct: 75,
   max_members_per_class: 15,
   max_classes: 32,
+  registration_open: true,
+  class_start_date: "",
 };
 
 export async function getAppSettings(): Promise<AppSettings> {
@@ -25,6 +29,8 @@ export async function getAppSettings(): Promise<AppSettings> {
       attendance_threshold_pct: parseInt(map.attendance_threshold_pct) || DEFAULTS.attendance_threshold_pct,
       max_members_per_class:    parseInt(map.max_members_per_class)    || DEFAULTS.max_members_per_class,
       max_classes:              parseInt(map.max_classes)              || DEFAULTS.max_classes,
+      registration_open:        map.registration_open !== "false",
+      class_start_date:         map.class_start_date ?? "",
     };
   } catch {
     return DEFAULTS;

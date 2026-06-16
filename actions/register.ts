@@ -21,6 +21,16 @@ export interface RegistrationResult {
   }>;
 }
 
+export async function getRegistrationOpen(): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("app_settings")
+    .select("value")
+    .eq("key", "registration_open")
+    .maybeSingle();
+  return (data?.value ?? "true") !== "false";
+}
+
 export async function registerMember(formData: {
   first_name: string;
   last_name: string;
@@ -29,6 +39,12 @@ export async function registerMember(formData: {
   preferred_slot: string;
   other_name?: string;
 }): Promise<RegistrationResult> {
+  // Check manual registration lock first
+  const isOpen = await getRegistrationOpen();
+  if (!isOpen) {
+    return { success: false, error: "registration_closed" };
+  }
+
   const { locked } = await isFormLocked();
   if (locked) {
     return { success: false, error: "Registration is currently closed. Please come back during service hours." };
@@ -48,23 +64,18 @@ export async function registerMember(formData: {
 
   if (nameMatches && nameMatches.length > 0) {
     if (!on) {
-      // Same first+last exists — ask the user to add an other name
       return { success: false, error: "name_taken" };
     }
-    // Check if exact triple (first+last+other) is already registered
     const exactDup = nameMatches.some(
       (m) => (m.other_name ?? "").toLowerCase() === on.toLowerCase()
     );
     if (exactDup) {
       return { success: false, error: "already_registered" };
     }
-    // Different other_name → different person; proceed
   }
 
   const supabase = createServerSupabaseClient();
 
-  // RPC signature is unchanged (5 params) — no schema cache reload needed.
-  // other_name is written via a separate UPDATE after insert.
   const { data, error } = await supabase.rpc("assign_member_to_class", {
     p_first_name:     fn,
     p_last_name:      ln,
@@ -86,7 +97,6 @@ export async function registerMember(formData: {
   };
 
   if (result.status === "assigned") {
-    // Store other_name now that we have the member_id
     if (on && result.member_id) {
       await admin.from("members").update({ other_name: on }).eq("id", result.member_id);
     }
@@ -108,10 +118,6 @@ export async function registerMember(formData: {
       error: "slot_full",
       alternativeSlots: result.alternative_slots?.filter((s) => s.remaining > 0),
     };
-  }
-
-  if (result.status === "all_full") {
-    return { success: false, error: "all_full" };
   }
 
   return { success: false, error: "Something went wrong. Please try again." };
@@ -171,15 +177,14 @@ export async function addToPendingList(formData: {
   last_name: string;
   phone: string;
   email?: string;
-  preferred_slot: string;
 }): Promise<{ success: boolean; error?: string }> {
   const admin = createAdminClient();
   const { error } = await admin.from("pending_members").insert({
-    first_name:     formData.first_name,
-    last_name:      formData.last_name,
-    phone:          formData.phone || null,
-    email:          formData.email || null,
-    preferred_slot: formData.preferred_slot,
+    first_name: formData.first_name,
+    last_name:  formData.last_name,
+    phone:      formData.phone || null,
+    email:      formData.email || null,
+    preferred_slot: null,
   });
   if (error) return { success: false, error: error.message };
   return { success: true };
@@ -209,19 +214,20 @@ export async function updatePendingStatus(
   return { success: true };
 }
 
+// Admin picks the slot explicitly when promoting
 export async function promotePendingMember(
   pendingId: string,
-  member: { first_name: string; last_name: string; phone: string; email?: string; preferred_slot: string }
+  member: { first_name: string; last_name: string; phone: string; email?: string },
+  slot: string
 ): Promise<{ success: boolean; class_name?: string; slot?: string; error?: string }> {
   const admin = createAdminClient();
 
-  // Assign to class using the existing RPC (bypasses time lock — admin action)
   const { data, error } = await admin.rpc("assign_member_to_class", {
     p_first_name:     member.first_name,
     p_last_name:      member.last_name,
     p_phone:          member.phone,
     p_email:          member.email ?? null,
-    p_preferred_slot: member.preferred_slot,
+    p_preferred_slot: slot,
   });
 
   if (error) return { success: false, error: error.message };
@@ -233,8 +239,12 @@ export async function promotePendingMember(
     return { success: true, class_name: result.class_name, slot: result.slot };
   }
 
-  if (result.status === "slot_full" || result.status === "all_full") {
-    return { success: false, error: "All classes are still full. Free up a spot before promoting." };
+  if (result.status === "slot_full") {
+    return { success: false, error: `The ${slot} slot is full. Choose a different slot.` };
+  }
+
+  if (result.status === "all_full") {
+    return { success: false, error: "All classes are full. Free up a spot first." };
   }
 
   return { success: false, error: "Could not assign member to a class." };

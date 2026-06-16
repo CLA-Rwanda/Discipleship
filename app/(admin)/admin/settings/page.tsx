@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { KeyRound, Eye, EyeOff, ShieldCheck, Skull, AlertTriangle, SlidersHorizontal, Save, Lock, Plus, Trash2 } from "lucide-react";
+import { KeyRound, Eye, EyeOff, ShieldCheck, Skull, AlertTriangle, SlidersHorizontal, Save, Lock, Plus, Trash2, UserCheck, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { createClient } from "@/lib/supabase";
@@ -35,6 +35,12 @@ export default function SettingsPage() {
     max_members_per_class: "15",
     max_classes: "16",
   });
+  const [registrationOpen, setRegistrationOpen] = useState(true);
+  const [regToggling, setRegToggling]           = useState(false);
+  const [classStartDate, setClassStartDate]     = useState("");
+  const [startDateSaving, setStartDateSaving]   = useState(false);
+  const [startDateSaved, setStartDateSaved]     = useState(false);
+  const [startDateError, setStartDateError]     = useState("");
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [savingKey, setSavingKey]             = useState<string | null>(null);
   const [savedKey, setSavedKey]               = useState<string | null>(null);
@@ -85,6 +91,8 @@ export default function SettingsPage() {
         max_members_per_class:    String(s.max_members_per_class),
         max_classes:              String(s.max_classes),
       });
+      setRegistrationOpen(s.registration_open);
+      setClassStartDate(s.class_start_date ?? "");
       setSettingsLoading(false);
       setTimeLockEnabled(enabled);
       setTimeLocks(locks);
@@ -114,6 +122,27 @@ export default function SettingsPage() {
       setSavedKey(key);
       setTimeout(() => setSavedKey(null), 2000);
     }
+  }
+
+  async function handleToggleRegistration() {
+    setRegToggling(true);
+    const newVal = !registrationOpen;
+    await updateAppSetting("registration_open", String(newVal));
+    setRegistrationOpen(newVal);
+    setRegToggling(false);
+  }
+
+  async function handleSaveStartDate() {
+    const d = classStartDate.trim();
+    if (!d) { setStartDateError("Please select a date."); return; }
+    const day = new Date(d + "T12:00:00Z").getUTCDay();
+    if (day !== 0) { setStartDateError("Must be a Sunday."); return; }
+    setStartDateError("");
+    setStartDateSaving(true);
+    await updateAppSetting("class_start_date", d);
+    setStartDateSaving(false);
+    setStartDateSaved(true);
+    setTimeout(() => setStartDateSaved(false), 2500);
   }
 
   async function handleToggleTimeLock() {
@@ -287,6 +316,84 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Registration Open/Close */}
+      {isSuperAdmin && (
+        <div className="rounded-xl overflow-hidden" style={cardStyle}>
+          <div className="px-5 py-4 flex items-center justify-between gap-4" style={headerBorder}>
+            <div>
+              <h2 className="text-lg font-bold flex items-center gap-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>
+                <UserCheck size={18} style={{ color: "var(--cla-amber)" }} />
+                Registration Form
+              </h2>
+              <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
+                Manually open or close the public registration form. When closed, visitors can opt-in to the waitlist.
+              </p>
+            </div>
+            <button
+              onClick={handleToggleRegistration}
+              disabled={regToggling}
+              aria-label="Toggle registration"
+              className="relative inline-flex shrink-0 rounded-full transition-colors"
+              style={{
+                width: 44, height: 24,
+                background: registrationOpen ? "var(--cla-amber)" : "rgba(255,255,255,0.12)",
+                opacity: regToggling ? 0.6 : 1,
+                cursor: regToggling ? "not-allowed" : "pointer",
+              }}
+            >
+              <span className="inline-block rounded-full transition-transform"
+                style={{ width: 18, height: 18, margin: 3, transform: registrationOpen ? "translateX(20px)" : "translateX(0)", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" }} />
+            </button>
+          </div>
+          <div className="px-5 py-4">
+            <div className="flex items-center gap-2 text-sm" style={{ color: registrationOpen ? "#C8D400" : "#ff6b6b" }}>
+              <span className="font-bold">{registrationOpen ? "Open" : "Closed"}</span>
+              <span style={{ color: "rgba(248,240,230,0.4)" }}>— {registrationOpen ? "New members can register" : "Registration is closed; visitors can join the waitlist"}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Class Start Date */}
+      {isSuperAdmin && (
+        <div className="rounded-xl overflow-hidden" style={cardStyle}>
+          <div className="px-5 py-4" style={headerBorder}>
+            <h2 className="text-lg font-bold flex items-center gap-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>
+              <Calendar size={18} style={{ color: "var(--cla-amber)" }} />
+              Class Start Date
+            </h2>
+            <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
+              The first Sunday of this discipleship cycle. Used to generate the attendance grid (one column per Sunday since this date).
+            </p>
+          </div>
+          <div className="px-5 py-4 flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <input
+                type="date"
+                value={classStartDate}
+                onChange={(e) => { setClassStartDate(e.target.value); setStartDateError(""); setStartDateSaved(false); }}
+                className="cla-input"
+                style={{ colorScheme: "dark", maxWidth: 200 }}
+              />
+              <button
+                onClick={handleSaveStartDate}
+                disabled={startDateSaving}
+                className="px-4 py-2 rounded-lg text-sm font-bold transition-all"
+                style={{ fontFamily: "Barlow Condensed, sans-serif", background: startDateSaved ? "rgba(200,212,0,0.1)" : "linear-gradient(135deg,#E89A10,#F8BA18)", color: startDateSaved ? "#C8D400" : "#200909" }}
+              >
+                {startDateSaving ? "Saving…" : startDateSaved ? "✓ Saved" : "Save"}
+              </button>
+            </div>
+            {startDateError && <p className="text-xs" style={{ color: "#ff6b6b" }}>{startDateError}</p>}
+            {classStartDate && !startDateError && (
+              <p className="text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>
+                Attendance grid starts from {new Date(classStartDate + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+              </p>
+            )}
+          </div>
         </div>
       )}
 

@@ -39,6 +39,11 @@ function fmtDate(iso: string) {
   });
 }
 
+function fmtSunday(iso: string) {
+  const d = new Date(iso + "T12:00:00Z");
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
 function fmtDatetime(iso: string) {
   return new Date(iso).toLocaleString("en-GB", {
     day: "numeric",
@@ -374,37 +379,47 @@ export default function ReportsPage() {
 
                 {cls.members.length === 0 ? (
                   <p className="text-xs" style={{ color: "rgba(248,240,230,0.3)" }}>
-                    No attendance recorded for this class in the selected period.
+                    No members in this class.
                   </p>
                 ) : (
-                  <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(228,148,12,0.1)" }}>
-                    <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
+                  <div className="rounded-lg overflow-x-auto" style={{ border: "1px solid rgba(228,148,12,0.1)" }}>
+                    <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: `${160 + 36 * (cls.sundays.length + 1)}px` }}>
                       <thead>
                         <tr style={{ background: "rgba(34,16,16,0.8)", borderBottom: "1px solid rgba(228,148,12,0.1)" }}>
-                          <th className="text-left px-3 py-2 text-xs font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.4)", letterSpacing: "0.05em", width: "40%" }}>
+                          <th className="text-left px-3 py-2 text-xs font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.4)", letterSpacing: "0.05em", minWidth: 140 }}>
                             NAME
                           </th>
-                          <th className="text-center px-3 py-2 text-xs font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.4)", letterSpacing: "0.05em", width: "15%" }}>
-                            SESSIONS
+                          <th className="text-center px-2 py-2 text-xs font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.4)", letterSpacing: "0.05em", minWidth: 38 }}>
+                            ATT.
                           </th>
-                          <th className="text-left px-3 py-2 text-xs font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.4)", letterSpacing: "0.05em" }}>
-                            DATES
-                          </th>
+                          {cls.sundays.map((d) => (
+                            <th key={d} className="text-center px-1 py-2 text-xs font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(228,148,12,0.6)", minWidth: 36, whiteSpace: "nowrap" }}>
+                              {fmtSunday(d)}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
                         {cls.members.map((m, i) => (
-                          <tr
-                            key={m.name}
-                            style={{ background: i % 2 === 0 ? "transparent" : "rgba(228,148,12,0.03)" }}
-                          >
-                            <td className="px-3 py-2 text-sm" style={{ color: "#E8E0D8" }}>{m.name}</td>
-                            <td className="px-3 py-2 text-center font-bold text-sm" style={{ fontFamily: "Barlow Condensed, sans-serif", color: m.sessions >= 3 ? "#C8D400" : "var(--cla-amber)" }}>
-                              {m.sessions}
+                          <tr key={m.name} style={{ background: m.flagged ? "rgba(42,8,8,0.6)" : i % 2 === 0 ? "transparent" : "rgba(228,148,12,0.03)" }}>
+                            <td className="px-3 py-2 text-sm" style={{ color: "#E8E0D8" }}>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>{m.name}</span>
+                                {m.flagged && (
+                                  <span className="text-xs px-1 py-0.5 rounded font-bold" style={{ background: "rgba(255,80,80,0.15)", color: "#ff6b6b", border: "1px solid rgba(255,80,80,0.25)", lineHeight: 1 }}>
+                                    ⚠ {m.currentConsecutiveMisses}
+                                  </span>
+                                )}
+                              </div>
                             </td>
-                            <td className="px-3 py-2 text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>
-                              {m.dates.map((d) => fmtDate(d)).join(" · ")}
+                            <td className="px-2 py-2 text-center font-bold text-sm" style={{ fontFamily: "Barlow Condensed, sans-serif", color: m.attendedCount === 0 ? "rgba(248,240,230,0.2)" : m.attendedCount >= 3 ? "#C8D400" : "var(--cla-amber)" }}>
+                              {m.attendedCount}
                             </td>
+                            {m.sessions.map((attended, si) => (
+                              <td key={si} className="px-1 py-2 text-center" style={{ color: attended ? "#C8D400" : "rgba(255,100,100,0.4)", fontSize: 13 }}>
+                                {attended ? "✓" : "✗"}
+                              </td>
+                            ))}
                           </tr>
                         ))}
                       </tbody>

@@ -42,6 +42,7 @@ export default function MembersPage() {
   const [promotingId, setPromotingId]   = useState<string | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [pendingFeedback, setPendingFeedback] = useState<{ id: string; msg: string; ok: boolean } | null>(null);
+  const [promoteSlots, setPromoteSlots]       = useState<Record<string, string>>({});
 
   // ── Load members ──────────────────────────────────────────
   useEffect(() => {
@@ -114,16 +115,16 @@ export default function MembersPage() {
   // ── Waitlist helpers ──────────────────────────────────────
   const waitingCount = pending.filter((p) => p.status === "waiting").length;
 
-  async function handlePromote(p: PendingMember) {
+  async function handlePromote(p: PendingMember, slot: string) {
+    if (!slot) return;
     setPromotingId(p.id);
     setPendingFeedback(null);
     const result = await promotePendingMember(p.id, {
-      first_name:     p.first_name,
-      last_name:      p.last_name,
-      phone:          p.phone ?? "",
-      email:          p.email ?? undefined,
-      preferred_slot: p.preferred_slot ?? "8am",
-    });
+      first_name: p.first_name,
+      last_name:  p.last_name,
+      phone:      p.phone ?? "",
+      email:      p.email ?? undefined,
+    }, slot);
     setPromotingId(null);
     if (result.success) {
       setPendingFeedback({ id: p.id, msg: `Promoted to ${result.class_name} (${SLOT_LABELS[result.slot!] ?? result.slot})`, ok: true });
@@ -351,23 +352,35 @@ export default function MembersPage() {
                               </div>
                             )}
                             {isWaiting && (
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <button
-                                  onClick={() => handlePromote(p)}
-                                  disabled={promotingId === p.id}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                                  style={{ background: "linear-gradient(135deg,#E89A10,#F8BA18)", color: "#200909" }}
-                                >
-                                  {promotingId === p.id ? "…" : <><ChevronRight size={12} />Promote</>}
-                                </button>
-                                <button
-                                  onClick={() => handleDismiss(p.id)}
-                                  disabled={dismissingId === p.id}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                                  style={{ background: "rgba(192,40,40,0.15)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.3)" }}
-                                >
-                                  {dismissingId === p.id ? "…" : "Dismiss"}
-                                </button>
+                              <div className="flex flex-col gap-2">
+                                <div className="flex gap-1.5 items-center">
+                                  <span className="text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>Slot:</span>
+                                  {["8am", "10am"].map((s) => (
+                                    <button key={s}
+                                      onClick={() => setPromoteSlots((prev) => ({ ...prev, [p.id]: s }))}
+                                      className="px-2 py-0.5 rounded text-xs font-bold transition-all"
+                                      style={{ background: promoteSlots[p.id] === s ? "linear-gradient(135deg,#E89A10,#F8BA18)" : "rgba(255,255,255,0.06)", color: promoteSlots[p.id] === s ? "#200909" : "rgba(248,240,230,0.55)", border: promoteSlots[p.id] === s ? "none" : "1px solid rgba(228,148,12,0.2)" }}
+                                    >{SLOT_LABELS[s]}</button>
+                                  ))}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => { const s = promoteSlots[p.id]; if (s) handlePromote(p, s); }}
+                                    disabled={promotingId === p.id || !promoteSlots[p.id]}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                                    style={{ background: promoteSlots[p.id] ? "linear-gradient(135deg,#E89A10,#F8BA18)" : "rgba(228,148,12,0.15)", color: promoteSlots[p.id] ? "#200909" : "rgba(248,240,230,0.35)", opacity: promotingId === p.id ? 0.6 : 1 }}
+                                  >
+                                    {promotingId === p.id ? "…" : <><ChevronRight size={12} />Promote</>}
+                                  </button>
+                                  <button
+                                    onClick={() => handleDismiss(p.id)}
+                                    disabled={dismissingId === p.id}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                                    style={{ background: "rgba(192,40,40,0.15)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.3)" }}
+                                  >
+                                    {dismissingId === p.id ? "…" : "Dismiss"}
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </td>

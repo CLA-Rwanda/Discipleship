@@ -4,20 +4,22 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { ADMIN_EMAIL } from "@/lib/config";
 import { getResend, FROM_EMAIL, buildReportEmail } from "@/lib/email";
+import { getSundaysBetween } from "@/actions/attendance-grid";
 
 async function assertAdmin() {
   const supabase = createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
   return user;
 }
 
 export interface ReportMember {
   name: string;
-  sessions: number;
-  dates: string[];
+  sessions: boolean[];
+  attendedCount: number;
+  missedCount: number;
+  flagged: boolean;
+  currentConsecutiveMisses: number;
 }
 
 export interface ReportClass {
@@ -25,6 +27,7 @@ export interface ReportClass {
   slot: string;
   attendanceCount: number;
   uniqueMembers: number;
+  sundays: string[];
   members: ReportMember[];
 }
 
@@ -60,64 +63,90 @@ export async function getReportPreview(
     await assertAdmin();
     const admin = createAdminClient();
 
-    // Get facilitator info
     const { data: facilitator, error: fErr } = await admin
       .from("facilitators")
       .select("id, full_name, email")
       .eq("id", facilitatorId)
       .single();
+    if (fErr || !facilitator) return { success: false, error: "Facilitator not found." };
 
-    if (fErr || !facilitator) {
-      return { success: false, error: "Facilitator not found." };
-    }
-
-    // Get classes assigned to this facilitator
     const { data: classes, error: cErr } = await admin
       .from("classes")
       .select("id, name, slot")
       .eq("facilitator_id", facilitatorId)
       .order("slot");
-
     if (cErr) return { success: false, error: cErr.message };
-    if (!classes || classes.length === 0) {
-      return { success: false, error: "This facilitator has no classes assigned." };
-    }
+    if (!classes || classes.length === 0) return { success: false, error: "This facilitator has no classes assigned." };
 
     const classIds = classes.map((c) => c.id);
+    const sundays  = getSundaysBetween(dateFrom, dateTo);
 
-    // Get attendance records for those classes in the date range
-    const { data: attendance, error: aErr } = await admin
-      .from("attendance")
-      .select("member_name, class_id, attended_at")
+    // Get all members for those classes
+    const { data: members } = await admin
+      .from("members")
+      .select("id, first_name, last_name, other_name, class_id")
       .in("class_id", classIds)
-      .gte("attended_at", `${dateFrom}T00:00:00.000Z`)
-      .lte("attended_at", `${dateTo}T23:59:59.999Z`)
-      .order("attended_at");
+      .order("last_name");
 
-    if (aErr) return { success: false, error: aErr.message };
+    const memberIds = (members ?? []).map((m: any) => m.id);
 
-    const attendanceRows = attendance ?? [];
+    // Get attendance in date range
+    const { data: attendance } = memberIds.length > 0
+      ? await admin
+          .from("attendance")
+          .select("member_id, member_name, class_id, attended_at")
+          .in("class_id", classIds)
+          .gte("attended_at", `${dateFrom}T00:00:00.000Z`)
+          .lte("attended_at", `${dateTo}T23:59:59.999Z`)
+      : { data: [] };
+
+    const attendedMap = new Map<string, Set<string>>();
+    let totalAttendance = 0;
+    for (const a of attendance ?? []) {
+      if (!a.member_id) continue;
+      if (!attendedMap.has(a.member_id)) attendedMap.set(a.member_id, new Set());
+      attendedMap.get(a.member_id)!.add((a.attended_at as string).slice(0, 10));
+      totalAttendance++;
+    }
+
+    function maxConsec(sessions: boolean[]): number {
+      let max = 0, cur = 0;
+      for (const s of sessions) { cur = s ? 0 : cur + 1; if (cur > max) max = cur; }
+      return max;
+    }
+    function trailingMisses(sessions: boolean[]): number {
+      let count = 0;
+      for (let i = sessions.length - 1; i >= 0; i--) { if (!sessions[i]) count++; else break; }
+      return count;
+    }
 
     const reportClasses: ReportClass[] = classes.map((cls) => {
-      const clsAttendance = attendanceRows.filter((a) => a.class_id === cls.id);
-
-      // Aggregate: one entry per unique member with all their session dates
-      const memberMap = new Map<string, string[]>();
-      for (const a of clsAttendance) {
-        const existing = memberMap.get(a.member_name) ?? [];
-        existing.push(a.attended_at);
-        memberMap.set(a.member_name, existing);
-      }
-      const members: ReportMember[] = Array.from(memberMap.entries())
-        .map(([name, dates]) => ({ name, sessions: dates.length, dates: dates.slice().sort() }))
+      const clsMembers: ReportMember[] = ((members ?? []) as any[])
+        .filter((m) => m.class_id === cls.id)
+        .map((m) => {
+          const dates = attendedMap.get(m.id) ?? new Set<string>();
+          const sessions = sundays.map((d) => dates.has(d));
+          const mc = maxConsec(sessions);
+          const tm = trailingMisses(sessions);
+          const name = [m.first_name, m.other_name, m.last_name].filter(Boolean).join(" ");
+          return {
+            name,
+            sessions,
+            attendedCount: sessions.filter(Boolean).length,
+            missedCount:   sessions.filter((s) => !s).length,
+            flagged: mc >= 3,
+            currentConsecutiveMisses: tm,
+          };
+        })
         .sort((a, b) => a.name.localeCompare(b.name));
 
       return {
         name: cls.name,
         slot: cls.slot,
-        attendanceCount: clsAttendance.length,
-        uniqueMembers: members.length,
-        members,
+        attendanceCount: clsMembers.reduce((s, m) => s + m.attendedCount, 0),
+        uniqueMembers:   clsMembers.length,
+        sundays,
+        members: clsMembers,
       };
     });
 
@@ -125,12 +154,12 @@ export async function getReportPreview(
       success: true,
       data: {
         facilitatorId,
-        facilitatorName: facilitator.full_name,
+        facilitatorName:  facilitator.full_name,
         facilitatorEmail: facilitator.email ?? "",
         dateFrom,
         dateTo,
         classes: reportClasses,
-        totalAttendance: attendanceRows.length,
+        totalAttendance,
       },
     };
   } catch (err: any) {
@@ -143,58 +172,41 @@ export async function sendReport(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const user = await assertAdmin();
-
     if (!preview.facilitatorEmail) {
       return { success: false, error: "This facilitator has no email address on file." };
     }
 
-    const dateFromLabel = new Date(preview.dateFrom).toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-    const dateToLabel = new Date(preview.dateTo).toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
+    const fmtLabel = (iso: string) =>
+      new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
     const html = buildReportEmail({
-      facilitatorName: preview.facilitatorName,
-      dateFrom: dateFromLabel,
-      dateTo: dateToLabel,
-      classes: preview.classes,
-      totalAttendance: preview.totalAttendance,
+      facilitatorName:  preview.facilitatorName,
+      dateFrom:         fmtLabel(preview.dateFrom),
+      dateTo:           fmtLabel(preview.dateTo),
+      classes:          preview.classes,
+      totalAttendance:  preview.totalAttendance,
     });
 
-    // Send email via Resend
     const { error: emailError } = await getResend().emails.send({
-      from: FROM_EMAIL,
-      to: preview.facilitatorEmail,
-      subject: `CLA Discipleship Report — ${dateFromLabel} to ${dateToLabel}`,
+      from:    FROM_EMAIL,
+      to:      preview.facilitatorEmail,
+      subject: `CLA Discipleship Report — ${fmtLabel(preview.dateFrom)} to ${fmtLabel(preview.dateTo)}`,
       html,
     });
+    if (emailError) return { success: false, error: (emailError as any).message ?? "Failed to send email." };
 
-    if (emailError) {
-      return { success: false, error: (emailError as any).message ?? "Failed to send email." };
-    }
-
-    // Save snapshot to reports table (use admin client to bypass RLS on INSERT)
     const admin = createAdminClient();
     await admin.from("reports").insert({
-      facilitator_id: preview.facilitatorId,
-      facilitator_name: preview.facilitatorName,
+      facilitator_id:    preview.facilitatorId,
+      facilitator_name:  preview.facilitatorName,
       facilitator_email: preview.facilitatorEmail,
-      date_from: preview.dateFrom,
-      date_to: preview.dateTo,
-      sent_by: user.id,
-      class_names: preview.classes.map((c) => c.name),
-      attendance_count: preview.totalAttendance,
-      report_html: html,
-      metadata: {
-        classes_count: preview.classes.length,
-        sent_by_email: user.email,
-      },
+      date_from:         preview.dateFrom,
+      date_to:           preview.dateTo,
+      sent_by:           user.id,
+      class_names:       preview.classes.map((c) => c.name),
+      attendance_count:  preview.totalAttendance,
+      report_html:       html,
+      metadata:          { classes_count: preview.classes.length, sent_by_email: user.email },
     });
 
     return { success: true };
@@ -218,17 +230,13 @@ export interface ReportHistoryRow {
 export async function getReportHistory(): Promise<ReportHistoryRow[]> {
   try {
     const supabase = createServerSupabaseClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user || user.email !== ADMIN_EMAIL) return [];
 
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("reports")
-      .select(
-        "id, facilitator_name, facilitator_email, date_from, date_to, sent_at, class_names, attendance_count, metadata"
-      )
+      .select("id, facilitator_name, facilitator_email, date_from, date_to, sent_at, class_names, attendance_count, metadata")
       .order("sent_at", { ascending: false })
       .limit(100);
 
