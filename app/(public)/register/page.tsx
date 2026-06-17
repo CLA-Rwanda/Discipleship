@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/Input";
 import { SlotPicker } from "@/components/ui/SlotPicker";
 import { registerMember, getSlotCapacities, addToPendingList, getRegistrationOpen } from "@/actions/register";
 import { checkPhoneDuplicate, type DuplicateCheckResult } from "@/actions/check-duplicate";
-import { isFormLocked } from "@/actions/time-lock";
 
 type Step = "loading" | "closed" | "waitlist-form" | "waitlist-done" | "form" | "slot-conflict" | "success";
 
@@ -30,7 +29,6 @@ export default function RegisterPage() {
   const [step, setStep]         = useState<Step>("loading");
   const [loading, setLoading]   = useState(false);
   const [slotCaps, setSlotCaps] = useState<SlotCap[]>([]);
-  const [timeLocked, setTimeLocked] = useState(false);
 
   const [form, setForm] = useState({
     first_name: "", last_name: "", other_name: "",
@@ -57,10 +55,9 @@ export default function RegisterPage() {
   const [wlLoading, setWlLoading] = useState(false);
 
   useEffect(() => {
-    Promise.all([getRegistrationOpen(), isFormLocked(), getSlotCapacities()]).then(([isOpen, { locked }, caps]) => {
-      setTimeLocked(locked);
+    Promise.all([getRegistrationOpen(), getSlotCapacities()]).then(([isOpen, caps]) => {
       setSlotCaps(caps);
-      setStep(locked ? "form" : isOpen ? "form" : "closed");
+      setStep(isOpen ? "form" : "closed");
     });
   }, []);
 
@@ -353,24 +350,6 @@ export default function RegisterPage() {
             <Button variant="primary" loading={loading} disabled={!selectedAlt} onClick={handleAltSubmit} className="flex-1">
               Confirm <ChevronRight size={18} />
             </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── LOCKED ───────────────────────────────────────────────────
-  if (timeLocked) {
-    return (
-      <div className="min-h-dvh flex flex-col items-center justify-center p-6 animate-fade-in" style={{ background: "var(--cla-bg-dark)" }}>
-        <div className="w-full max-w-sm flex flex-col items-center gap-6 text-center">
-          <CLALogo size="md" />
-          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.2)" }}>
-            <Lock size={30} style={{ color: "rgba(228,148,12,0.55)" }} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Registration Closed</h1>
-            <p className="mt-2 text-sm" style={{ color: "rgba(248,240,230,0.6)" }}>Registration is only available during Sunday service hours. Please come back when you're at church.</p>
           </div>
         </div>
       </div>

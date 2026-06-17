@@ -2,7 +2,6 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { isFormLocked } from "@/actions/time-lock";
 
 export interface RegistrationResult {
   success: boolean;
@@ -43,11 +42,6 @@ export async function registerMember(formData: {
   const isOpen = await getRegistrationOpen();
   if (!isOpen) {
     return { success: false, error: "registration_closed" };
-  }
-
-  const { locked } = await isFormLocked();
-  if (locked) {
-    return { success: false, error: "Registration is currently closed. Please come back during service hours." };
   }
 
   const admin = createAdminClient();
