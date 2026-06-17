@@ -109,16 +109,16 @@ export async function getReportPreview(
       totalAttendance++;
     }
 
-    function maxConsec(sessions: boolean[]): number {
+    const maxConsec = (sessions: boolean[]): number => {
       let max = 0, cur = 0;
       for (const s of sessions) { cur = s ? 0 : cur + 1; if (cur > max) max = cur; }
       return max;
-    }
-    function trailingMisses(sessions: boolean[]): number {
+    };
+    const trailingMisses = (sessions: boolean[]): number => {
       let count = 0;
       for (let i = sessions.length - 1; i >= 0; i--) { if (!sessions[i]) count++; else break; }
       return count;
-    }
+    };
 
     const reportClasses: ReportClass[] = classes.map((cls) => {
       const clsMembers: ReportMember[] = ((members ?? []) as any[])
