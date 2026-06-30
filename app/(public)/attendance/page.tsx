@@ -149,7 +149,7 @@ export default function AttendancePage() {
     );
   }
 
-  // ── SUCCESS ─────────────────────────────────────────────────
+  // ── SUCCESS ────────────────────────────────────────────────
   if (submitted && successData) {
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center p-6 animate-fade-in" style={{ background: "var(--cla-bg-dark)" }}>
