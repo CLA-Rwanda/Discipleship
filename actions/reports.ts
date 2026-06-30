@@ -1,8 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase-admin";
-import { createServerSupabaseClient } from "@/lib/supabase-server";
-import { ADMIN_EMAIL } from "@/lib/config";
+import { assertFullAdmin } from "@/lib/assert-admin";
 import { getTransporter, FROM_EMAIL, buildReportEmail } from "@/lib/email";
 import { getSundaysBetween } from "@/lib/dates";
 
@@ -228,12 +227,7 @@ export interface ReportHistoryRow {
 
 export async function getReportHistory(): Promise<ReportHistoryRow[]> {
   try {
-    const supabase = createServerSupabaseClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const adminClient2 = createAdminClient();
-    const { data: roleRow } = await adminClient2.from("admin_roles").select("role").eq("user_id", user.id).single();
-    const isFullAdmin = user.email === (await import("@/lib/config")).ADMIN_EMAIL || ["super_admin","admin"].includes(roleRow?.role ?? "");
-    if (!isFullAdmin) return [];
+    await assertFullAdmin();
 
     const admin = createAdminClient();
     const { data, error } = await admin
