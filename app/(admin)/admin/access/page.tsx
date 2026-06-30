@@ -94,14 +94,18 @@ export default function AccessPage() {
     setActionError("");
     setActionSuccess("");
 
-    const result = await revokeAdminUser(userId);
-    setRevoking(null);
-
-    if (result.success) {
-      setActionSuccess(`Access revoked for ${email}.`);
-      fetchUsers();
-    } else {
-      setActionError(result.error ?? "Failed to revoke. If this is the super admin, the database will block it.");
+    try {
+      const result = await revokeAdminUser(userId);
+      if (result.success) {
+        setActionSuccess(`Access revoked for ${email}.`);
+        fetchUsers();
+      } else {
+        setActionError(result.error ?? "Failed to revoke.");
+      }
+    } catch (err: any) {
+      setActionError(err?.message ?? "Unexpected error revoking access.");
+    } finally {
+      setRevoking(null);
     }
   }
 
