@@ -308,12 +308,13 @@ export default function RegisterPage() {
                 <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Time</p>
                 <p className="font-semibold">{formatSlotLabel(successData.slot)}</p>
               </div>
-              {successData.facilitator_name && (
+
+             {/* {successData.facilitator_name && (
                 <div>
                   <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Facilitator</p>
                   <p className="font-semibold">{successData.facilitator_name}</p>
                 </div>
-              )}
+              )} */}
             </div>
           </div>
           <p className="text-sm" style={{ color: "rgba(248,240,230,0.5)" }}>We look forward to seeing you! Your facilitator will guide you through the class.</p>
