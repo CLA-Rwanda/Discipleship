@@ -64,9 +64,24 @@ export async function deleteFacilitator(
   try {
     await assertAdmin();
     const admin = createAdminClient();
-    // Unassign classes before deleting the facilitator
     await admin.from("classes").update({ facilitator_id: null }).eq("facilitator_id", id);
     const { error } = await admin.from("facilitators").delete().eq("id", id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function bulkDeleteFacilitators(
+  ids: string[]
+): Promise<{ success: boolean; error?: string }> {
+  if (ids.length === 0) return { success: true };
+  try {
+    await assertAdmin();
+    const admin = createAdminClient();
+    await admin.from("classes").update({ facilitator_id: null }).in("facilitator_id", ids);
+    const { error } = await admin.from("facilitators").delete().in("id", ids);
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err: any) {

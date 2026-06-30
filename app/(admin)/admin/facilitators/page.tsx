@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { SlotBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase";
-import { deleteFacilitator } from "@/actions/admin";
+import { deleteFacilitator, bulkDeleteFacilitators } from "@/actions/admin";
 import type { Facilitator } from "@/lib/types";
 
 interface FacilitatorWithClasses extends Facilitator {
@@ -90,6 +90,11 @@ export default function FacilitatorsPage() {
   const [activeSlotTab, setActiveSlotTab] = useState<string>("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting]           = useState(false);
+
+  // Bulk delete
+  const [selectedIds, setSelectedIds]     = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting]   = useState(false);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   // Bulk upload modal
   const [bulkOpen, setBulkOpen]         = useState(false);
@@ -338,6 +343,33 @@ export default function FacilitatorsPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === facilitators.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(facilitators.map((f) => f.id)));
+    }
+  }
+
+  async function handleBulkDelete() {
+    setBulkDeleting(true);
+    const result = await bulkDeleteFacilitators(Array.from(selectedIds));
+    setBulkDeleting(false);
+    setBulkDeleteConfirm(false);
+    if (result.success) {
+      setSelectedIds(new Set());
+      fetchFacilitators();
+    }
+  }
+
   const assignSlots = Array.from(new Set(allClasses.map((c) => c.slot))).sort();
 
   return (
@@ -347,7 +379,24 @@ export default function FacilitatorsPage() {
           <h1 className="text-3xl font-extrabold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Facilitators</h1>
           <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.5)" }}>{facilitators.length} facilitators</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {selectedIds.size > 0 && (
+            bulkDeleteConfirm ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold" style={{ color: "#ff6b6b" }}>Delete {selectedIds.size}?</span>
+                <button onClick={() => setBulkDeleteConfirm(false)} className="text-xs px-2 py-1 rounded" style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>Cancel</button>
+                <button onClick={handleBulkDelete} disabled={bulkDeleting} className="text-xs px-3 py-1 rounded font-bold"
+                  style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
+                  {bulkDeleting ? "Deleting…" : "Yes, delete"}
+                </button>
+              </div>
+            ) : (
+              <Button variant="secondary" size="sm" onClick={() => setBulkDeleteConfirm(true)}
+                style={{ color: "#ff6b6b", borderColor: "rgba(192,40,40,0.35)" }}>
+                <Trash2 size={14} /> Delete Selected ({selectedIds.size})
+              </Button>
+            )
+          )}
           <Button variant="secondary" size="sm" onClick={() => { setBulkOpen(true); setBulkTab("csv"); setBulkResult(null); }}>
             <Upload size={15} /> Add Multiple
           </Button>
@@ -362,65 +411,80 @@ export default function FacilitatorsPage() {
           <div className="spinner" style={{ width: 28, height: 28, borderTopColor: "var(--cla-amber)", borderColor: "rgba(228,148,12,0.2)" }} />
         </div>
       ) : (
-        <div className="grid gap-3">
-          {facilitators.map((f) => (
-            <div key={f.id} className="cla-card p-4 flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold"
-                  style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.15)", color: "var(--cla-amber)", fontSize: "1rem" }}>
-                  {f.full_name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <p className="font-bold">{f.full_name}</p>
-                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                    {f.email && <p className="text-xs" style={{ color: "rgba(248,240,230,0.55)" }}>{f.email}</p>}
-                    {f.phone && <p className="text-xs" style={{ color: "rgba(248,240,230,0.55)" }}>{f.phone}</p>}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold"
-                  style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.08)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)" }}>
-                  <BookOpen size={12} />{f.classes_count} {f.classes_count === 1 ? "class" : "classes"}
-                </div>
-                <button onClick={() => openAssign(f)} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                  style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(91,45,142,0.12)", color: "#b47fea", border: "1px solid rgba(91,45,142,0.25)" }}>
-                  <BookMarked size={12} /> Assign Classes
-                </button>
-                {f.classes_count > 0 && (
-                  <button onClick={() => openSmsExport(f)} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                    style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(34,197,94,0.08)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.2)" }}>
-                    <MessageSquare size={12} /> Export for Messaging
-                  </button>
-                )}
-                <button onClick={() => openEdit(f)} className="p-2 rounded-lg transition-all" style={{ color: "rgba(248,240,230,0.45)" }}>
-                  <Edit2 size={16} />
-                </button>
-                {confirmDeleteId === f.id ? (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold" style={{ color: "#ff6b6b" }}>Delete?</span>
-                    <button onClick={() => setConfirmDeleteId(null)} className="text-xs px-2 py-1 rounded" style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>No</button>
-                    <button onClick={() => handleDelete(f.id)} disabled={deleting} className="text-xs px-2 py-1 rounded font-bold"
-                      style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
-                      {deleting ? "…" : "Yes, delete"}
-                    </button>
-                  </div>
-                ) : (
-                  <button onClick={() => setConfirmDeleteId(f.id)} className="p-2 rounded-lg transition-all" style={{ color: "rgba(192,40,40,0.5)" }} title="Delete facilitator">
-                    <Trash2 size={16} />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-          {facilitators.length === 0 && (
-            <div className="cla-card p-12 text-center">
-              <p className="text-lg font-bold mb-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>No facilitators yet</p>
-              <p className="text-sm mb-6" style={{ color: "rgba(248,240,230,0.45)" }}>Add your first facilitator to get started.</p>
-              <Button variant="primary" size="sm" onClick={openAdd}><Plus size={16} /> Add Facilitator</Button>
+        <>
+          {facilitators.length > 0 && (
+            <div className="flex items-center gap-2 px-1">
+              <input type="checkbox" checked={selectedIds.size === facilitators.length}
+                onChange={toggleSelectAll} className="w-4 h-4 accent-amber-500 cursor-pointer"
+              />
+              <span className="text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>
+                {selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select all"}
+              </span>
             </div>
           )}
-        </div>
+          <div className="grid gap-3">
+            {facilitators.map((f) => (
+              <div key={f.id} className="cla-card p-4 flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-4">
+                  <input type="checkbox" checked={selectedIds.has(f.id)} onChange={() => toggleSelect(f.id)}
+                    className="w-4 h-4 accent-amber-500 cursor-pointer shrink-0"
+                  />
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold"
+                    style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.15)", color: "var(--cla-amber)", fontSize: "1rem" }}>
+                    {f.full_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="font-bold">{f.full_name}</p>
+                    <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                      {f.email && <p className="text-xs" style={{ color: "rgba(248,240,230,0.55)" }}>{f.email}</p>}
+                      {f.phone && <p className="text-xs" style={{ color: "rgba(248,240,230,0.55)" }}>{f.phone}</p>}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold"
+                    style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.08)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)" }}>
+                    <BookOpen size={12} />{f.classes_count} {f.classes_count === 1 ? "class" : "classes"}
+                  </div>
+                  <button onClick={() => openAssign(f)} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                    style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(91,45,142,0.12)", color: "#b47fea", border: "1px solid rgba(91,45,142,0.25)" }}>
+                    <BookMarked size={12} /> Assign Classes
+                  </button>
+                  {f.classes_count > 0 && (
+                    <button onClick={() => openSmsExport(f)} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                      style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(34,197,94,0.08)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.2)" }}>
+                      <MessageSquare size={12} /> Export for Messaging
+                    </button>
+                  )}
+                  <button onClick={() => openEdit(f)} className="p-2 rounded-lg transition-all" style={{ color: "rgba(248,240,230,0.45)" }}>
+                    <Edit2 size={16} />
+                  </button>
+                  {confirmDeleteId === f.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold" style={{ color: "#ff6b6b" }}>Delete?</span>
+                      <button onClick={() => setConfirmDeleteId(null)} className="text-xs px-2 py-1 rounded" style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>No</button>
+                      <button onClick={() => handleDelete(f.id)} disabled={deleting} className="text-xs px-2 py-1 rounded font-bold"
+                        style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
+                        {deleting ? "…" : "Yes, delete"}
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setConfirmDeleteId(f.id)} className="p-2 rounded-lg transition-all" style={{ color: "rgba(192,40,40,0.5)" }} title="Delete facilitator">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {facilitators.length === 0 && (
+              <div className="cla-card p-12 text-center">
+                <p className="text-lg font-bold mb-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>No facilitators yet</p>
+                <p className="text-sm mb-6" style={{ color: "rgba(248,240,230,0.45)" }}>Add your first facilitator to get started.</p>
+                <Button variant="primary" size="sm" onClick={openAdd}><Plus size={16} /> Add Facilitator</Button>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* Add / Edit Modal */}
