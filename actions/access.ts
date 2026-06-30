@@ -73,14 +73,19 @@ export async function revokeAdminUser(
 
     const adminClient = createAdminClient();
 
-    // The DB trigger will throw if role = 'super_admin' — this is the DB-level guard.
-    const { error } = await adminClient
+    const { error: roleError } = await adminClient
       .from("admin_roles")
       .delete()
       .eq("user_id", userId);
 
-    if (error) {
-      return { success: false, error: error.message };
+    if (roleError) {
+      return { success: false, error: roleError.message };
+    }
+
+    // Delete the auth user entirely so they don't linger in Supabase
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId);
+    if (deleteError) {
+      return { success: false, error: deleteError.message };
     }
 
     return { success: true };
