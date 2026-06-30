@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { createClient } from "@/lib/supabase";
 import { changeAdminPassword } from "@/actions/auth";
-import { ADMIN_EMAIL } from "@/lib/config";
 
 type View = "login" | "change-password";
 
@@ -37,23 +36,17 @@ export default function AdminLoginPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoginError("");
-
-    // Reject non-admin emails before hitting Supabase
-    if (loginForm.email.trim().toLowerCase() !== ADMIN_EMAIL) {
-      setLoginError("This email is not authorized to access the admin console.");
-      return;
-    }
-
     setLoginLoading(true);
+
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({
-      email: loginForm.email.trim(),
+      email: loginForm.email.trim().toLowerCase(),
       password: loginForm.password,
     });
     setLoginLoading(false);
 
     if (error) {
-      setLoginError("Incorrect password. Please try again.");
+      setLoginError("Incorrect email or password.");
     } else {
       router.push("/admin/dashboard");
       router.refresh();

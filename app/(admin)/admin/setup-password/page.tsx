@@ -12,7 +12,7 @@ interface Criterion {
 }
 
 const CRITERIA: Criterion[] = [
-  { label: "At least 8 characters", test: (pw) => pw.length >= 8 },
+  { label: "At least 6 characters", test: (pw) => pw.length >= 6 },
   { label: "One uppercase letter (A–Z)", test: (pw) => /[A-Z]/.test(pw) },
   { label: "One lowercase letter (a–z)", test: (pw) => /[a-z]/.test(pw) },
   { label: "One number (0–9)", test: (pw) => /[0-9]/.test(pw) },
