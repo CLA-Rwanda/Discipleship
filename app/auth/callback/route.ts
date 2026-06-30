@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -9,18 +8,22 @@ export async function GET(request: NextRequest) {
   const next = searchParams.get("next") ?? "/admin/dashboard";
 
   if (code) {
-    const cookieStore = cookies();
+    const redirectUrl =
+      type === "invite" ? `${origin}/admin/setup-password` : `${origin}${next}`;
+
+    const response = NextResponse.redirect(redirectUrl);
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           getAll() {
-            return cookieStore.getAll();
+            return request.cookies.getAll();
           },
-          setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
+          setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              response.cookies.set(name, value, options)
             );
           },
         },
@@ -30,11 +33,7 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
-      // Invited users must set their password before accessing admin
-      if (type === "invite") {
-        return NextResponse.redirect(`${origin}/admin/setup-password`);
-      }
-      return NextResponse.redirect(`${origin}${next}`);
+      return response;
     }
   }
 
