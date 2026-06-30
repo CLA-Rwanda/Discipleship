@@ -34,7 +34,7 @@ export async function inviteAdminUser(
       type: "invite",
       email,
       options: {
-        redirectTo: `${getSiteUrl()}/auth/callback?type=invite`,
+        redirectTo: `${getSiteUrl()}/auth/accept-invite`,
         data: { invited_role: role },
       },
     });
