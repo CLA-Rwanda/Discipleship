@@ -108,11 +108,9 @@ export async function revokeAdminUser(
       return { success: false, error: roleError.message };
     }
 
-    // Delete the auth user entirely so they don't linger in Supabase
-    const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId);
-    if (deleteError) {
-      return { success: false, error: deleteError.message };
-    }
+    // Best-effort: delete the auth user so they don't linger in Supabase
+    // Not blocking — access is already revoked by removing the admin_roles row
+    await adminClient.auth.admin.deleteUser(userId).catch(() => null);
 
     return { success: true };
   } catch (err: any) {
