@@ -76,7 +76,7 @@ export default function AdminLoginPage() {
     // Sign in with current password to verify identity before overwriting
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: ADMIN_EMAIL,
+      email: loginForm.email.trim().toLowerCase(),
       password: cpForm.currentPassword,
     });
 
