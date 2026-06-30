@@ -1,17 +1,24 @@
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
-let _resend: Resend | null = null;
-export function getResend(): Resend {
-  if (!_resend) {
-    const key = process.env.RESEND_API_KEY;
-    if (!key) throw new Error("RESEND_API_KEY is not set in environment variables.");
-    _resend = new Resend(key);
+let _transporter: nodemailer.Transporter | null = null;
+
+export function getTransporter(): nodemailer.Transporter {
+  if (!_transporter) {
+    _transporter = nodemailer.createTransport({
+      host:   process.env.SMTP_HOST   ?? "smtp.gmail.com",
+      port:   parseInt(process.env.SMTP_PORT ?? "587"),
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
   }
-  return _resend;
+  return _transporter;
 }
 
 export const FROM_EMAIL =
-  process.env.RESEND_FROM_EMAIL ?? "CLA Discipleship <reports@cla.org>";
+  process.env.SMTP_FROM ?? `CLA Discipleship <${process.env.SMTP_USER}>`;
 
 function fmtSunday(iso: string): string {
   const d = new Date(iso + "T12:00:00Z");

@@ -3,7 +3,7 @@
 import { createAdminClient } from "@/lib/supabase-admin";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { ADMIN_EMAIL } from "@/lib/config";
-import { getResend, FROM_EMAIL, buildReportEmail } from "@/lib/email";
+import { getTransporter, FROM_EMAIL, buildReportEmail } from "@/lib/email";
 import { getSundaysBetween } from "@/lib/dates";
 
 async function assertAdmin() {
@@ -187,13 +187,12 @@ export async function sendReport(
       totalAttendance:  preview.totalAttendance,
     });
 
-    const { error: emailError } = await getResend().emails.send({
+    await getTransporter().sendMail({
       from:    FROM_EMAIL,
       to:      preview.facilitatorEmail,
       subject: `CLA Discipleship Report — ${fmtLabel(preview.dateFrom)} to ${fmtLabel(preview.dateTo)}`,
       html,
     });
-    if (emailError) return { success: false, error: (emailError as any).message ?? "Failed to send email." };
 
     const admin = createAdminClient();
     await admin.from("reports").insert({
