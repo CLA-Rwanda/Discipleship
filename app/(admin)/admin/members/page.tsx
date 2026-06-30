@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Download, Trash2, ArrowUpDown, Clock, CheckCircle, XCircle, ChevronRight } from "lucide-react";
+import { Search, Download, Trash2, ArrowUpDown, Clock, CheckCircle, XCircle, ChevronRight, AlertTriangle } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase";
 import { deleteMember } from "@/actions/admin";
@@ -9,8 +9,10 @@ import {
   getPendingMembers,
   updatePendingStatus,
   promotePendingMember,
+  clearWaitlist,
   type PendingMember,
 } from "@/actions/register";
+import { downloadXLSX } from "@/lib/xlsx-export";
 import type { Member } from "@/lib/types";
 
 interface MemberWithClass extends Member {
@@ -43,6 +45,8 @@ export default function MembersPage() {
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [pendingFeedback, setPendingFeedback] = useState<{ id: string; msg: string; ok: boolean } | null>(null);
   const [promoteSlots, setPromoteSlots]       = useState<Record<string, string>>({});
+  const [clearingWaitlist, setClearingWaitlist] = useState(false);
+  const [confirmClearWaitlist, setConfirmClearWaitlist] = useState(false);
 
   // ── Load members ──────────────────────────────────────────
   useEffect(() => {
@@ -102,14 +106,15 @@ export default function MembersPage() {
 
   function exportCSV() {
     const rows = [
-      ["First Name", "Last Name", "Phone", "Email", "Slot", "Class", "Facilitator", "Attended", "Registered"],
-      ...filtered.map((m) => [m.first_name, m.last_name, m.phone, m.email ?? "", m.preferred_slot, m.class_name ?? "", m.facilitator_name ?? "", m.attendance_count, new Date(m.registered_at).toLocaleDateString()]),
+      ["First Name", "Last Name", "Phone", "Email", "Slot", "Class", "Facilitator", "Sessions Attended", "Registered"],
+      ...filtered.map((m) => [
+        m.first_name, m.last_name, m.phone, m.email ?? "",
+        m.preferred_slot, m.class_name ?? "", m.facilitator_name ?? "",
+        m.attendance_count,
+        new Date(m.registered_at).toLocaleDateString("en-GB"),
+      ]),
     ];
-    const csv = rows.map((r) => r.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a"); a.href = url; a.download = "cla-members.csv"; a.click();
-    URL.revokeObjectURL(url);
+    downloadXLSX(rows, "cla-members.xlsx");
   }
 
   // ── Waitlist helpers ──────────────────────────────────────
@@ -138,6 +143,14 @@ export default function MembersPage() {
     setDismissingId(id);
     await updatePendingStatus(id, "dismissed");
     setDismissingId(null);
+    loadPending();
+  }
+
+  async function handleClearWaitlist() {
+    setClearingWaitlist(true);
+    await clearWaitlist();
+    setClearingWaitlist(false);
+    setConfirmClearWaitlist(false);
     loadPending();
   }
 
@@ -278,12 +291,32 @@ export default function MembersPage() {
       {/* ── WAITLIST TAB ──────────────────────────────────── */}
       {tab === "waitlist" && (
         <>
-          <div className="flex items-center gap-3 p-4 rounded-xl text-sm" style={{ background: "rgba(228,148,12,0.07)", border: "1px solid rgba(228,148,12,0.2)" }}>
-            <Clock size={15} style={{ color: "var(--cla-amber)", flexShrink: 0 }} />
-            <span style={{ color: "rgba(248,240,230,0.65)" }}>
-              Waitlist is ordered <strong style={{ color: "var(--cla-amber-light)" }}>first-come, first-served</strong> by registration time.
-              Promote moves the person directly into an available class slot.
-            </span>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 p-4 rounded-xl text-sm flex-1" style={{ background: "rgba(228,148,12,0.07)", border: "1px solid rgba(228,148,12,0.2)" }}>
+              <Clock size={15} style={{ color: "var(--cla-amber)", flexShrink: 0 }} />
+              <span style={{ color: "rgba(248,240,230,0.65)" }}>
+                Waitlist is ordered <strong style={{ color: "var(--cla-amber-light)" }}>first-come, first-served</strong> by registration time.
+                Promote moves the person directly into an available class slot.
+              </span>
+            </div>
+            {pending.length > 0 && (
+              confirmClearWaitlist ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  <AlertTriangle size={14} style={{ color: "#ff6b6b" }} />
+                  <span className="text-xs font-bold" style={{ color: "#ff6b6b" }}>Clear all {pending.length} entries?</span>
+                  <button onClick={() => setConfirmClearWaitlist(false)} className="text-xs px-2 py-1 rounded" style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>Cancel</button>
+                  <button onClick={handleClearWaitlist} disabled={clearingWaitlist} className="text-xs px-3 py-1 rounded font-bold"
+                    style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
+                    {clearingWaitlist ? "Clearing…" : "Yes, clear"}
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => setConfirmClearWaitlist(true)} className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all"
+                  style={{ background: "rgba(192,40,40,0.12)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.3)" }}>
+                  <Trash2 size={13} /> Clear Waitlist
+                </button>
+              )
+            )}
           </div>
 
           {pendingLoading ? (

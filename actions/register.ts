@@ -243,3 +243,14 @@ export async function promotePendingMember(
 
   return { success: false, error: "Could not assign member to a class." };
 }
+
+export async function clearWaitlist(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const admin = createAdminClient();
+    const { error } = await admin.from("pending_members").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}

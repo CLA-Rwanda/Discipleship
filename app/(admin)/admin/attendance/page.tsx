@@ -11,6 +11,7 @@ import {
 } from "@/actions/admin";
 import { getAllAttendanceForAdmin } from "@/actions/attendance";
 import { createClient } from "@/lib/supabase";
+import { downloadXLSX } from "@/lib/xlsx-export";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,40 +40,29 @@ function normName(s: string) {
 }
 
 function exportLogCSV(rows: AttendanceRow[]) {
-  const csv = [
-    ["Name", "Class", "Facilitator", "Slot", "Date", "Linked"].join(","),
-    ...rows.map((r) =>
-      [
-        r.member_name,
-        r.class_name ?? "",
-        r.facilitator_name ?? "",
-        r.service_slot,
-        new Date(r.attended_at).toLocaleDateString("en-GB"),
-        r.is_linked ? "Yes" : "No",
-      ].join(",")
-    ),
-  ].join("\n");
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-  a.download = "cla-attendance.csv";
-  a.click();
+  downloadXLSX([
+    ["Name", "Class", "Facilitator", "Slot", "Date", "Linked"],
+    ...rows.map((r) => [
+      r.member_name,
+      r.class_name ?? "",
+      r.facilitator_name ?? "",
+      r.service_slot,
+      new Date(r.attended_at).toLocaleDateString("en-GB"),
+      r.is_linked ? "Yes" : "No",
+    ]),
+  ], "cla-attendance.xlsx");
 }
 
 function exportProgressCSV(rows: ProgressRow[], threshold: number) {
-  const csv = [
-    ["Name", "Sessions", "Status"].join(","),
-    ...rows.map((p) =>
-      [
-        p.displayName,
-        p.count,
-        p.count >= threshold ? "Ready" : `${threshold - p.count} more needed`,
-      ].join(",")
-    ),
-  ].join("\n");
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-  a.download = "cla-graduation-progress.csv";
-  a.click();
+  downloadXLSX([
+    ["Name", "Sessions Attended", "Sessions Required", "Status"],
+    ...rows.map((p) => [
+      p.displayName,
+      p.count,
+      threshold,
+      p.count >= threshold ? "Ready" : `${threshold - p.count} more needed`,
+    ]),
+  ], "cla-graduation-progress.xlsx");
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────

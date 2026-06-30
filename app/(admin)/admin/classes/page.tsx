@@ -9,6 +9,7 @@ import { FillBar } from "@/components/ui/FillBar";
 import { createClient } from "@/lib/supabase";
 import { deleteClass, bulkDeleteClasses } from "@/actions/admin";
 import { getAppSettings } from "@/actions/settings";
+import { downloadXLSX } from "@/lib/xlsx-export";
 import type { Class, Member, Facilitator } from "@/lib/types";
 
 interface ClassWithDetails extends Omit<Class, "facilitator"> {
@@ -183,12 +184,7 @@ export default function ClassesPage() {
         countById[m.id] ?? 0,
       ]),
     ];
-    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    a.download = `${cls.name.replace(/\s+/g, "-")}-roster.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadXLSX(rows, `${cls.name.replace(/\s+/g, "-")}-roster.xlsx`);
   }
 
   const filtered = filterSlot === "all" ? classes : classes.filter((c) => c.slot === filterSlot);
