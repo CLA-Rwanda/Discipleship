@@ -287,7 +287,7 @@ export default function RegisterPage() {
     );
   }
 
-  // ── SUCCESS ──────────────────────────────────────────────────
+  // ── SUCCESS ─────────────────────────────────────────────
   if (step === "success" && successData) {
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center p-6 animate-fade-in" style={{ background: "var(--cla-bg-dark)" }}>
