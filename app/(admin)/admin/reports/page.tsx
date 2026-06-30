@@ -22,8 +22,7 @@ import {
   type ReportPreviewData,
   type ReportHistoryRow,
 } from "@/actions/reports";
-import { ADMIN_EMAIL } from "@/lib/config";
-import { createClient } from "@/lib/supabase";
+import { getMyRole } from "@/lib/assert-admin";
 
 const SLOT_LABELS: Record<string, string> = {
   "8am": "8:00 AM",
@@ -81,12 +80,7 @@ export default function ReportsPage() {
   useEffect(() => {
     getFacilitators().then(setFacilitators);
 
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user?.email === ADMIN_EMAIL) {
-        setIsSuperAdmin(true);
-      }
-    });
+    getMyRole().then((r) => setIsSuperAdmin(r?.isFullAdmin ?? false));
   }, []);
 
   const loadHistory = useCallback(async () => {

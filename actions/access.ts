@@ -1,27 +1,17 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase-admin";
-import { createServerSupabaseClient } from "@/lib/supabase-server";
-import { ADMIN_EMAIL, getSiteUrl } from "@/lib/config";
+import { getSiteUrl } from "@/lib/config";
 import { getTransporter, FROM_EMAIL } from "@/lib/email";
+import { assertFullAdmin } from "@/lib/assert-admin";
 import type { AdminRole } from "@/lib/types";
-
-// Verify the current session user is the super admin
-async function assertSuperAdmin() {
-  const supabase = createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user || user.email !== ADMIN_EMAIL) {
-    throw new Error("Unauthorized: only the super admin can perform this action.");
-  }
-  return user;
-}
 
 export async function inviteAdminUser(
   email: string,
   role: AdminRole
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await assertSuperAdmin();
+    await assertFullAdmin();
 
     if (role === "super_admin") {
       return { success: false, error: "Cannot invite another super admin." };
@@ -98,7 +88,7 @@ export async function revokeAdminUser(
   userId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await assertSuperAdmin();
+    await assertFullAdmin();
 
     const adminClient = createAdminClient();
 
@@ -132,7 +122,7 @@ export interface AdminUserRow {
 
 export async function listAdminUsers(): Promise<AdminUserRow[]> {
   try {
-    await assertSuperAdmin();
+    await assertFullAdmin();
 
     const adminClient = createAdminClient();
 

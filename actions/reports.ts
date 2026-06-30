@@ -230,7 +230,10 @@ export async function getReportHistory(): Promise<ReportHistoryRow[]> {
   try {
     const supabase = createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user || user.email !== ADMIN_EMAIL) return [];
+    const adminClient2 = createAdminClient();
+    const { data: roleRow } = await adminClient2.from("admin_roles").select("role").eq("user_id", user.id).single();
+    const isFullAdmin = user.email === (await import("@/lib/config")).ADMIN_EMAIL || ["super_admin","admin"].includes(roleRow?.role ?? "");
+    if (!isFullAdmin) return [];
 
     const admin = createAdminClient();
     const { data, error } = await admin

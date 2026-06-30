@@ -2,18 +2,12 @@
 
 import { createAdminClient } from "@/lib/supabase-admin";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
-import { ADMIN_EMAIL } from "@/lib/config";
+import { assertFullAdmin } from "@/lib/assert-admin";
 
 async function assertAdmin() {
   const supabase = createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
-  return user;
-}
-
-async function assertSuperAdmin() {
-  const user = await assertAdmin();
-  if (user.email !== ADMIN_EMAIL) throw new Error("This action requires super admin access.");
   return user;
 }
 
@@ -152,7 +146,7 @@ export async function deleteAttendancePerson(
 
 export async function eraseAllData(): Promise<{ success: boolean; error?: string }> {
   try {
-    await assertSuperAdmin();
+    await assertFullAdmin();
     const admin = createAdminClient();
     const { error: attErr } = await admin
       .from("attendance")

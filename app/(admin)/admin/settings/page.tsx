@@ -9,7 +9,7 @@ import { changeAdminPassword } from "@/actions/auth";
 import { eraseAllData } from "@/actions/admin";
 import { getAppSettings, updateAppSetting } from "@/actions/settings";
 import { getTimeLocks, getTimeLockEnabled, createTimeLock, updateTimeLock, deleteTimeLock } from "@/actions/time-lock";
-import { ADMIN_EMAIL } from "@/lib/config";
+import { getMyRole } from "@/lib/assert-admin";
 import { type TimeLock, DAY_NAMES } from "@/lib/time-lock";
 
 interface SettingField {
@@ -75,10 +75,12 @@ export default function SettingsPage() {
   const [showNew, setShowNew]         = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
+
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user?.email === ADMIN_EMAIL) setIsSuperAdmin(true);
+    getMyRole().then((r) => {
+      setIsSuperAdmin(r?.isFullAdmin ?? false);
+      setCurrentUserEmail(r?.email ?? "");
     });
     Promise.all([
       getAppSettings(),
@@ -208,7 +210,7 @@ export default function SettingsPage() {
     if (form.currentPassword === form.newPassword)       { setPwError("New password must be different from the current one."); return; }
     setPwLoading(true);
     const supabase = createClient();
-    const { error: verifyError } = await supabase.auth.signInWithPassword({ email: ADMIN_EMAIL, password: form.currentPassword });
+    const { error: verifyError } = await supabase.auth.signInWithPassword({ email: currentUserEmail, password: form.currentPassword });
     if (verifyError) { setPwLoading(false); setPwError("Current password is incorrect."); return; }
     const result = await changeAdminPassword(form.currentPassword, form.newPassword);
     setPwLoading(false);
@@ -231,11 +233,11 @@ export default function SettingsPage() {
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-lg shrink-0"
             style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.15)", color: "var(--cla-amber)" }}>
-            {ADMIN_EMAIL.charAt(0).toUpperCase()}
+            {currentUserEmail.charAt(0).toUpperCase()}
           </div>
           <div>
             <p className="font-bold">Administrator</p>
-            <p className="text-sm" style={{ color: "rgba(248,240,230,0.55)" }}>{ADMIN_EMAIL}</p>
+            <p className="text-sm" style={{ color: "rgba(248,240,230,0.55)" }}>{currentUserEmail}</p>
           </div>
           <div className="ml-auto">
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold"

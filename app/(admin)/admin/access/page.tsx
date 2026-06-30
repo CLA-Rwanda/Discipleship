@@ -12,9 +12,8 @@ import {
   revokeAdminUser,
   type AdminUserRow,
 } from "@/actions/access";
-import { ADMIN_EMAIL } from "@/lib/config";
+import { getMyRole } from "@/lib/assert-admin";
 import type { AdminRole } from "@/lib/types";
-import { createClient } from "@/lib/supabase";
 
 const ROLES: Exclude<AdminRole, "super_admin">[] = ["admin", "facilitator", "intern"];
 
@@ -52,10 +51,7 @@ export default function AccessPage() {
   }, []);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setIsSuperAdmin(user?.email === ADMIN_EMAIL);
-    });
+    getMyRole().then((r) => setIsSuperAdmin(r?.isFullAdmin ?? false));
     fetchUsers();
   }, [fetchUsers]);
 
