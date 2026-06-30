@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase-admin";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { assertFullAdmin } from "@/lib/assert-admin";
 import { getTransporter, FROM_EMAIL, buildReportEmail } from "@/lib/email";
 import { getSundaysBetween } from "@/lib/dates";
