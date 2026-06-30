@@ -54,8 +54,11 @@ export async function inviteAdminUser(
       return { success: false, error: linkError.message };
     }
 
-    const inviteUrl = linkData?.properties?.action_link;
-    if (!inviteUrl) return { success: false, error: "Failed to generate invite link." };
+    const tokenHash = linkData?.properties?.hashed_token;
+    if (!tokenHash) return { success: false, error: "Failed to generate invite link." };
+
+    // Build our own confirm URL — server handles verifyOtp, no PKCE mismatch
+    const inviteUrl = `${getSiteUrl()}/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=invite`;
 
     // Upsert admin_roles
     if (linkData?.user) {
