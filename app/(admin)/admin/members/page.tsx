@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Download, Trash2, ArrowUpDown, Clock, CheckCircle, XCircle, ChevronRight, AlertTriangle } from "lucide-react";
+import { Search, Download, Trash2, ArrowUpDown, Clock, CheckCircle, XCircle, ChevronRight, AlertTriangle, Edit2 } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import { createClient } from "@/lib/supabase";
-import { deleteMember } from "@/actions/admin";
+import { deleteMember, updateMember } from "@/actions/admin";
 import {
   getPendingMembers,
   updatePendingStatus,
@@ -16,10 +19,13 @@ import { downloadXLSX } from "@/lib/xlsx-export";
 import type { Member } from "@/lib/types";
 
 interface MemberWithClass extends Member {
+  other_name?: string;
   class_name?: string;
   facilitator_name?: string;
   attendance_count: number;
 }
+
+const BLANK_EDIT = { first_name: "", last_name: "", other_name: "", phone: "", email: "", preferred_slot: "8am" };
 
 type Tab = "members" | "waitlist";
 
@@ -37,6 +43,12 @@ export default function MembersPage() {
   const [confirmDeleteId, setConfirmDeleteId]   = useState<string | null>(null);
   const [deleting, setDeleting]         = useState(false);
   const [gradThreshold, setGradThreshold] = useState(16);
+
+  // ── Edit member state ─────────────────────────────────────
+  const [editTarget, setEditTarget]     = useState<MemberWithClass | null>(null);
+  const [editForm, setEditForm]         = useState(BLANK_EDIT);
+  const [editErrors, setEditErrors]     = useState<{ first_name?: string; phone?: string }>({});
+  const [saving, setSaving]             = useState(false);
 
   // ── Waitlist state ────────────────────────────────────────
   const [pending, setPending]           = useState<PendingMember[]>([]);
@@ -102,6 +114,39 @@ export default function MembersPage() {
     const result = await deleteMember(id);
     setDeleting(false);
     if (result.success) { setMembers((prev) => prev.filter((m) => m.id !== id)); setConfirmDeleteId(null); }
+  }
+
+  function openEdit(m: MemberWithClass) {
+    setEditTarget(m);
+    setEditForm({
+      first_name:     m.first_name,
+      last_name:      m.last_name,
+      other_name:     m.other_name ?? "",
+      phone:          m.phone,
+      email:          m.email ?? "",
+      preferred_slot: m.preferred_slot,
+    });
+    setEditErrors({});
+  }
+
+  async function handleSaveEdit() {
+    const errors: typeof editErrors = {};
+    if (!editForm.first_name.trim()) errors.first_name = "First name is required.";
+    if (!editForm.phone.trim()) errors.phone = "Phone number is required.";
+    if (Object.keys(errors).length) { setEditErrors(errors); return; }
+    setSaving(true);
+    const result = await updateMember(editTarget!.id, editForm);
+    setSaving(false);
+    if (result.success) {
+      setMembers((prev) => prev.map((m) =>
+        m.id === editTarget!.id
+          ? { ...m, ...editForm, other_name: editForm.other_name || undefined }
+          : m
+      ));
+      setEditTarget(null);
+    } else {
+      setEditErrors({ phone: result.error });
+    }
   }
 
   function exportCSV() {
@@ -270,7 +315,10 @@ export default function MembersPage() {
                               <button onClick={() => handleDeleteMember(m.id)} disabled={deleting} className="text-xs px-2 py-1 rounded font-bold" style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>{deleting ? "…" : "Yes, delete"}</button>
                             </div>
                           ) : (
-                            <button onClick={() => setConfirmDeleteId(m.id)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(192,40,40,0.5)" }} title="Delete member"><Trash2 size={15} /></button>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => openEdit(m)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(248,240,230,0.4)" }} title="Edit member"><Edit2 size={15} /></button>
+                              <button onClick={() => setConfirmDeleteId(m.id)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(192,40,40,0.5)" }} title="Delete member"><Trash2 size={15} /></button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -430,6 +478,47 @@ export default function MembersPage() {
           )}
         </>
       )}
+
+      {/* ── EDIT MEMBER MODAL ────────────────────────────── */}
+      <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title="Edit Member">
+        {editTarget && (
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-3">
+              <Input label="First Name" value={editForm.first_name} error={editErrors.first_name}
+                onChange={(e) => setEditForm((f) => ({ ...f, first_name: e.target.value }))} className="flex-1" />
+              <Input label="Last Name" value={editForm.last_name}
+                onChange={(e) => setEditForm((f) => ({ ...f, last_name: e.target.value }))} className="flex-1" />
+            </div>
+            <Input label="Middle Name (Optional)" value={editForm.other_name}
+              onChange={(e) => setEditForm((f) => ({ ...f, other_name: e.target.value }))} />
+            <Input label="Phone" type="tel" value={editForm.phone} error={editErrors.phone}
+              onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} />
+            <Input label="Email (Optional)" type="email" value={editForm.email}
+              onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} />
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-bold" style={{ color: "rgba(248,240,230,0.55)" }}>Preferred Slot</span>
+              <div className="flex gap-2">
+                {["8am", "10am"].map((s) => (
+                  <button key={s} type="button"
+                    onClick={() => setEditForm((f) => ({ ...f, preferred_slot: s }))}
+                    className="flex-1 py-2 rounded-lg text-sm font-bold transition-all"
+                    style={{
+                      fontFamily: "Barlow Condensed, sans-serif",
+                      background: editForm.preferred_slot === s ? "linear-gradient(135deg,#E89A10,#F8BA18)" : "rgba(255,255,255,0.05)",
+                      color: editForm.preferred_slot === s ? "#200909" : "rgba(248,240,230,0.55)",
+                      border: editForm.preferred_slot === s ? "none" : "1px solid rgba(228,148,12,0.2)",
+                    }}
+                  >{SLOT_LABELS[s]}</button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-3 mt-2">
+              <Button variant="secondary" onClick={() => setEditTarget(null)} className="flex-1">Cancel</Button>
+              <Button variant="primary" loading={saving} onClick={handleSaveEdit} className="flex-1">Save Changes</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

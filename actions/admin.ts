@@ -11,6 +11,38 @@ async function assertAdmin() {
   return user;
 }
 
+export async function updateMember(
+  id: string,
+  fields: {
+    first_name: string;
+    last_name: string;
+    other_name?: string;
+    phone: string;
+    email?: string;
+    preferred_slot: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await assertAdmin();
+    const admin = createAdminClient();
+    const { error } = await admin
+      .from("members")
+      .update({
+        first_name:     fields.first_name.trim(),
+        last_name:      fields.last_name.trim(),
+        other_name:     fields.other_name?.trim() || null,
+        phone:          fields.phone.trim(),
+        email:          fields.email?.trim() || null,
+        preferred_slot: fields.preferred_slot,
+      })
+      .eq("id", id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export async function deleteMember(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
