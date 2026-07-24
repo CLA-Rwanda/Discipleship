@@ -295,8 +295,10 @@ export default function RegisterPage() {
           <CLALogo size="md" />
           <div className="success-checkmark"><CheckCircle size={40} color="#200909" strokeWidth={2.5} /></div>
           <div>
-            <h1 className="text-3xl font-bold mb-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Welcome, {successData.first_name}!</h1>
-            <p style={{ color: "rgba(248,240,230,0.7)" }}>You have been registered for discipleship classes.</p>
+            <h1 className="text-3xl font-bold mb-1" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Registration Successful!</h1>
+            <p className="text-sm" style={{ color: "rgba(248,240,230,0.6)" }}>
+              Thank you for registering for the Discipleship Class – Second Cohort 2026.
+            </p>
           </div>
           <div className="w-full rounded-xl p-5 text-left" style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.25)" }}>
             <div className="flex flex-col gap-3">
@@ -308,16 +310,18 @@ export default function RegisterPage() {
                 <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Time</p>
                 <p className="font-semibold">{formatSlotLabel(successData.slot)}</p>
               </div>
-
-             {/* {successData.facilitator_name && (
-                <div>
-                  <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Facilitator</p>
-                  <p className="font-semibold">{successData.facilitator_name}</p>
-                </div>
-              )} */}
             </div>
           </div>
-          <p className="text-sm" style={{ color: "rgba(248,240,230,0.5)" }}>We look forward to seeing you! Your facilitator will guide you through the class.</p>
+          <div className="w-full rounded-xl p-4 text-left" style={{ background: "rgba(192,40,40,0.08)", border: "1px solid rgba(192,40,40,0.25)" }}>
+            <p className="text-xs font-bold uppercase tracking-widest mb-1.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "#ff8c8c" }}>Please Note</p>
+            <p className="text-sm leading-relaxed" style={{ color: "rgba(248,240,230,0.75)" }}>
+              To qualify for the Mission and successfully complete this class, you must maintain at least{" "}
+              <strong style={{ color: "#ff8c8c" }}>80% attendance</strong> throughout the course. We encourage you to attend every class and make the most of this discipleship journey.
+            </p>
+          </div>
+          <p className="text-sm" style={{ color: "rgba(248,240,230,0.5)" }}>
+            We look forward to growing together in Christ. God bless you!
+          </p>
           <Button variant="secondary" onClick={resetForm}>Register Another Person</Button>
         </div>
       </div>
