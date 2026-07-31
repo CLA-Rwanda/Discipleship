@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { AlertTriangle, ChevronDown, Download, MoveRight, Plus, Trash2, Users } from "lucide-react";
+import { AlertTriangle, ChevronDown, Download, Edit2, MoveRight, Plus, Trash2, UserCog, Users } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { FillBar } from "@/components/ui/FillBar";
 import { createClient } from "@/lib/supabase";
-import { deleteClass, bulkDeleteClasses } from "@/actions/admin";
+import { deleteClass, bulkDeleteClasses, updateMember, deleteMember } from "@/actions/admin";
 import { getAppSettings } from "@/actions/settings";
 import { downloadXLSX } from "@/lib/xlsx-export";
 import type { Class, Member, Facilitator } from "@/lib/types";
@@ -49,11 +50,25 @@ export default function ClassesPage() {
   const [maxClasses, setMaxClasses]     = useState(16);
   const [existingSlots, setExistingSlots] = useState<string[]>([]);
 
+  // Facilitators (for the assign-facilitator dropdown)
+  const [allFacilitators, setAllFacilitators] = useState<Facilitator[]>([]);
+  const [facilitatorEditClass, setFacilitatorEditClass] = useState<ClassWithDetails | null>(null);
+  const [facilitatorSelectId, setFacilitatorSelectId]   = useState("");
+  const [facilitatorSaving, setFacilitatorSaving]       = useState(false);
+
+  // Edit member modal (from within a class roster)
+  const [editMemberTarget, setEditMemberTarget] = useState<any | null>(null);
+  const [editMemberForm, setEditMemberForm]     = useState({ first_name: "", last_name: "", other_name: "", phone: "", email: "", preferred_slot: "" });
+  const [editMemberErrors, setEditMemberErrors] = useState<{ first_name?: string; phone?: string }>({});
+  const [savingMember, setSavingMember]         = useState(false);
+  const [confirmDeleteMemberId, setConfirmDeleteMemberId] = useState<string | null>(null);
+  const [deletingMember, setDeletingMember]     = useState(false);
+
   const fetchClasses = useCallback(async () => {
     const supabase = createClient();
     const { data } = await supabase
       .from("classes")
-      .select("*, facilitator:facilitators(id, full_name, email, phone, user_id, created_at), members(id, first_name, last_name, phone, email, preferred_slot, registered_at, class_id)")
+      .select("*, facilitator:facilitators(id, full_name, email, phone, user_id, created_at), members(id, first_name, last_name, other_name, phone, email, preferred_slot, registered_at, class_id)")
       .eq("is_active", true)
       .order("name");
 
@@ -72,10 +87,93 @@ export default function ClassesPage() {
     setExistingSlots(slots);
   }, []);
 
+  const fetchFacilitators = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase.from("facilitators").select("*").order("full_name");
+    setAllFacilitators(data ?? []);
+  }, []);
+
   useEffect(() => {
     fetchClasses();
+    fetchFacilitators();
     getAppSettings().then((s) => setMaxClasses(s.max_classes));
-  }, [fetchClasses]);
+  }, [fetchClasses, fetchFacilitators]);
+
+  // Keep the open roster modal in sync whenever the underlying classes list refreshes
+  useEffect(() => {
+    if (rosterClass) {
+      const updated = classes.find((c) => c.id === rosterClass.id);
+      if (updated) setRosterClass(updated);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classes]);
+
+  function openFacilitatorEdit(cls: ClassWithDetails) {
+    setFacilitatorEditClass(cls);
+    setFacilitatorSelectId(cls.facilitator_id ?? "");
+  }
+
+  async function handleSaveFacilitator() {
+    if (!facilitatorEditClass) return;
+    setFacilitatorSaving(true);
+    const supabase = createClient();
+    const newFacilitatorId = facilitatorSelectId || null;
+
+    // Enforce one class per slot per facilitator: bump them off any other
+    // class in the same slot before assigning here.
+    if (newFacilitatorId) {
+      const conflict = classes.find(
+        (c) => c.facilitator_id === newFacilitatorId && c.slot === facilitatorEditClass.slot && c.id !== facilitatorEditClass.id
+      );
+      if (conflict) {
+        await supabase.from("classes").update({ facilitator_id: null }).eq("id", conflict.id);
+      }
+    }
+
+    await supabase.from("classes").update({ facilitator_id: newFacilitatorId }).eq("id", facilitatorEditClass.id);
+    setFacilitatorSaving(false);
+    setFacilitatorEditClass(null);
+    fetchClasses();
+  }
+
+  function openEditMember(m: any) {
+    setEditMemberTarget(m);
+    setEditMemberForm({
+      first_name:     m.first_name,
+      last_name:      m.last_name,
+      other_name:     m.other_name ?? "",
+      phone:          m.phone,
+      email:          m.email ?? "",
+      preferred_slot: m.preferred_slot,
+    });
+    setEditMemberErrors({});
+  }
+
+  async function handleSaveMemberEdit() {
+    const errors: typeof editMemberErrors = {};
+    if (!editMemberForm.first_name.trim()) errors.first_name = "First name is required.";
+    if (!editMemberForm.phone.trim()) errors.phone = "Phone number is required.";
+    if (Object.keys(errors).length) { setEditMemberErrors(errors); return; }
+    setSavingMember(true);
+    const result = await updateMember(editMemberTarget.id, editMemberForm);
+    setSavingMember(false);
+    if (result.success) {
+      setEditMemberTarget(null);
+      fetchClasses();
+    } else {
+      setEditMemberErrors({ phone: result.error });
+    }
+  }
+
+  async function handleDeleteRosterMember(id: string) {
+    setDeletingMember(true);
+    const result = await deleteMember(id);
+    setDeletingMember(false);
+    if (result.success) {
+      setConfirmDeleteMemberId(null);
+      fetchClasses();
+    }
+  }
 
   async function handleDeleteClass(id: string) {
     setDeleting(true);
@@ -198,6 +296,10 @@ export default function ClassesPage() {
 
   const atCap = classes.length >= maxClasses;
   const nextName = nextClassName(classes.map((c) => c.name));
+
+  const facilitatorConflictClass = facilitatorEditClass && facilitatorSelectId
+    ? classes.find((c) => c.facilitator_id === facilitatorSelectId && c.slot === facilitatorEditClass.slot && c.id !== facilitatorEditClass.id)
+    : null;
 
   if (loading) {
     return (
@@ -334,6 +436,9 @@ export default function ClassesPage() {
                           style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.1)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)" }}>
                           <Users size={12} /> Roster
                         </button>
+                        <button onClick={() => openFacilitatorEdit(cls)} className="p-1.5 rounded-lg transition-all" style={{ color: "#b47fea" }} title="Assign facilitator">
+                          <UserCog size={14} />
+                        </button>
                         {confirmDeleteId === cls.id ? (
                           <div className="flex items-center gap-1.5 whitespace-nowrap">
                             <span className="text-xs font-bold" style={{ color: "#ff6b6b" }}>Sure?</span>
@@ -367,6 +472,9 @@ export default function ClassesPage() {
               <span style={{ color: "rgba(248,240,230,0.5)", fontSize: "0.85rem" }}>
                 Facilitator: {rosterClass.facilitator?.full_name ?? "Unassigned"}
               </span>
+              <button onClick={() => openFacilitatorEdit(rosterClass)} className="text-xs font-bold underline" style={{ color: "#b47fea" }}>
+                Change
+              </button>
               <span className="ml-auto font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: rosterClass.member_count >= rosterClass.capacity_max ? "#ff4444" : "var(--cla-amber)" }}>
                 {rosterClass.member_count}/{rosterClass.capacity_max}
               </span>
@@ -390,11 +498,29 @@ export default function ClassesPage() {
                       <p className="font-semibold text-sm">{member.first_name} {member.last_name}</p>
                       <p className="text-xs" style={{ color: "rgba(248,240,230,0.5)" }}>{member.phone}</p>
                     </div>
-                    <button onClick={() => { setMoveState({ member, fromClass: rosterClass }); setRosterClass(null); setTargetClassId(""); }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0"
-                      style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(91,45,142,0.15)", color: "#b47fea", border: "1px solid rgba(91,45,142,0.3)" }}>
-                      <MoveRight size={12} /> Move
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button onClick={() => { setMoveState({ member, fromClass: rosterClass }); setRosterClass(null); setTargetClassId(""); }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                        style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(91,45,142,0.15)", color: "#b47fea", border: "1px solid rgba(91,45,142,0.3)" }}>
+                        <MoveRight size={12} /> Move
+                      </button>
+                      <button onClick={() => openEditMember(member)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(248,240,230,0.4)" }} title="Edit member">
+                        <Edit2 size={14} />
+                      </button>
+                      {confirmDeleteMemberId === member.id ? (
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <button onClick={() => setConfirmDeleteMemberId(null)} className="text-xs px-1.5 py-1 rounded" style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>No</button>
+                          <button onClick={() => handleDeleteRosterMember(member.id)} disabled={deletingMember} className="text-xs px-1.5 py-1 rounded font-bold"
+                            style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
+                            {deletingMember ? "…" : "Yes"}
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setConfirmDeleteMemberId(member.id)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(192,40,40,0.5)" }} title="Delete member">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -482,6 +608,77 @@ export default function ClassesPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Assign Facilitator Modal */}
+      <Modal open={!!facilitatorEditClass} onClose={() => setFacilitatorEditClass(null)} title={facilitatorEditClass ? `Assign Facilitator — ${facilitatorEditClass.name}` : ""}>
+        {facilitatorEditClass && (
+          <div className="flex flex-col gap-4">
+            <div>
+              <label className="text-sm font-bold block mb-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Facilitator</label>
+              <div className="relative">
+                <select value={facilitatorSelectId} onChange={(e) => setFacilitatorSelectId(e.target.value)} className="cla-input appearance-none pr-8">
+                  <option value="">Unassigned</option>
+                  {allFacilitators.map((f) => <option key={f.id} value={f.id}>{f.full_name}</option>)}
+                </select>
+                <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(248,240,230,0.4)" }} />
+              </div>
+            </div>
+            {facilitatorConflictClass && (
+              <div className="flex items-start gap-2 p-3 rounded-lg text-sm" style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.25)", color: "var(--cla-amber)" }}>
+                <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  {allFacilitators.find((f) => f.id === facilitatorSelectId)?.full_name} currently leads <strong>{facilitatorConflictClass.name}</strong> at this slot ({facilitatorEditClass.slot}). Saving will unassign them from that class.
+                </span>
+              </div>
+            )}
+            <div className="flex gap-3 mt-2">
+              <Button variant="secondary" onClick={() => setFacilitatorEditClass(null)} className="flex-1">Cancel</Button>
+              <Button variant="primary" loading={facilitatorSaving} onClick={handleSaveFacilitator} className="flex-1">Save</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Edit Member Modal */}
+      <Modal open={!!editMemberTarget} onClose={() => setEditMemberTarget(null)} title="Edit Member">
+        {editMemberTarget && (
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-3">
+              <Input label="First Name" value={editMemberForm.first_name} error={editMemberErrors.first_name}
+                onChange={(e) => setEditMemberForm((f) => ({ ...f, first_name: e.target.value }))} className="flex-1" />
+              <Input label="Last Name" value={editMemberForm.last_name}
+                onChange={(e) => setEditMemberForm((f) => ({ ...f, last_name: e.target.value }))} className="flex-1" />
+            </div>
+            <Input label="Middle Name (Optional)" value={editMemberForm.other_name}
+              onChange={(e) => setEditMemberForm((f) => ({ ...f, other_name: e.target.value }))} />
+            <Input label="Phone" type="tel" value={editMemberForm.phone} error={editMemberErrors.phone}
+              onChange={(e) => setEditMemberForm((f) => ({ ...f, phone: e.target.value }))} />
+            <Input label="Email (Optional)" type="email" value={editMemberForm.email}
+              onChange={(e) => setEditMemberForm((f) => ({ ...f, email: e.target.value }))} />
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-bold" style={{ color: "rgba(248,240,230,0.55)" }}>Preferred Slot</span>
+              <div className="flex gap-2 flex-wrap">
+                {existingSlots.map((s) => (
+                  <button key={s} type="button"
+                    onClick={() => setEditMemberForm((f) => ({ ...f, preferred_slot: s }))}
+                    className="px-4 py-2 rounded-lg text-sm font-bold transition-all"
+                    style={{
+                      fontFamily: "Barlow Condensed, sans-serif",
+                      background: editMemberForm.preferred_slot === s ? "linear-gradient(135deg,#E89A10,#F8BA18)" : "rgba(255,255,255,0.05)",
+                      color: editMemberForm.preferred_slot === s ? "#200909" : "rgba(248,240,230,0.55)",
+                      border: editMemberForm.preferred_slot === s ? "none" : "1px solid rgba(228,148,12,0.2)",
+                    }}
+                  >{s}</button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-3 mt-2">
+              <Button variant="secondary" onClick={() => setEditMemberTarget(null)} className="flex-1">Cancel</Button>
+              <Button variant="primary" loading={savingMember} onClick={handleSaveMemberEdit} className="flex-1">Save Changes</Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
