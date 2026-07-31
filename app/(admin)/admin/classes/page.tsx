@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { AlertTriangle, ChevronDown, Download, Edit2, MoveRight, Plus, Trash2, UserCog, Users } from "lucide-react";
+import { useState, useEffect, useCallback, Fragment } from "react";
+import { AlertTriangle, ChevronDown, ChevronRight, Download, Edit2, MoveRight, Plus, Trash2, UserCog } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -30,7 +30,7 @@ function nextClassName(existingNames: string[]): string {
 export default function ClassesPage() {
   const [classes, setClasses]           = useState<ClassWithDetails[]>([]);
   const [loading, setLoading]           = useState(true);
-  const [rosterClass, setRosterClass]   = useState<ClassWithDetails | null>(null);
+  const [expandedIds, setExpandedIds]   = useState<Set<string>>(new Set());
   const [moveState, setMoveState]       = useState<{ member: Member; fromClass: ClassWithDetails } | null>(null);
   const [targetClassId, setTargetClassId] = useState("");
   const [movingId, setMovingId]         = useState<string | null>(null);
@@ -99,14 +99,13 @@ export default function ClassesPage() {
     getAppSettings().then((s) => setMaxClasses(s.max_classes));
   }, [fetchClasses, fetchFacilitators]);
 
-  // Keep the open roster modal in sync whenever the underlying classes list refreshes
-  useEffect(() => {
-    if (rosterClass) {
-      const updated = classes.find((c) => c.id === rosterClass.id);
-      if (updated) setRosterClass(updated);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classes]);
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   function openFacilitatorEdit(cls: ClassWithDetails) {
     setFacilitatorEditClass(cls);
@@ -408,126 +407,133 @@ export default function ClassesPage() {
                 const isFull    = cls.member_count >= cls.capacity_max;
                 const isWarning = pct >= 80 && !isFull;
                 const isChecked = selectedIds.has(cls.id);
+                const isExpanded = expandedIds.has(cls.id);
                 return (
-                  <tr key={cls.id} style={isChecked ? { background: "rgba(192,40,40,0.06)" } : undefined}>
-                    <td>
-                      <input type="checkbox" checked={isChecked} onChange={() => toggleSelect(cls.id)}
-                        style={{ accentColor: "var(--cla-amber)", cursor: "pointer" }} />
-                    </td>
-                    <td>
-                      <span className="font-bold">{cls.name}</span>
-                      {isFull    && <span className="ml-2 text-xs font-bold" style={{ color: "#ff4444" }}>FULL</span>}
-                      {isWarning && <span className="ml-2 text-xs font-bold" style={{ color: "var(--cla-amber)" }}>NEAR FULL</span>}
-                    </td>
-                    <td><SlotBadge slot={cls.slot} /></td>
-                    <td style={{ color: "rgba(248,240,230,0.7)" }}>
-                      {cls.facilitator?.full_name ?? <span style={{ color: "rgba(248,240,230,0.3)" }}>Unassigned</span>}
-                    </td>
-                    <td>
-                      <span className="font-bold" style={{ color: isFull ? "#ff4444" : isWarning ? "var(--cla-amber)" : "var(--cla-off-white)" }}>{cls.member_count}</span>
-                      <span style={{ color: "rgba(248,240,230,0.4)" }}>/{cls.capacity_max}</span>
-                    </td>
-                    <td style={{ width: "120px" }}>
-                      <FillBar value={cls.member_count} max={cls.capacity_max} />
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => setRosterClass(cls)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                          style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.1)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)" }}>
-                          <Users size={12} /> Roster
+                  <Fragment key={cls.id}>
+                    <tr style={isChecked ? { background: "rgba(192,40,40,0.06)" } : undefined}>
+                      <td>
+                        <input type="checkbox" checked={isChecked} onChange={() => toggleSelect(cls.id)}
+                          style={{ accentColor: "var(--cla-amber)", cursor: "pointer" }} />
+                      </td>
+                      <td>
+                        <button onClick={() => toggleExpand(cls.id)} className="inline-flex items-center gap-1.5"
+                          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit", color: "inherit" }}>
+                          <ChevronRight size={14} style={{ color: "rgba(248,240,230,0.4)", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }} />
+                          <span className="font-bold">{cls.name}</span>
                         </button>
-                        <button onClick={() => openFacilitatorEdit(cls)} className="p-1.5 rounded-lg transition-all" style={{ color: "#b47fea" }} title="Assign facilitator">
-                          <UserCog size={14} />
-                        </button>
-                        {confirmDeleteId === cls.id ? (
-                          <div className="flex items-center gap-1.5 whitespace-nowrap">
-                            <span className="text-xs font-bold" style={{ color: "#ff6b6b" }}>Sure?</span>
-                            <button onClick={() => setConfirmDeleteId(null)} className="text-xs px-2 py-1 rounded" style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>No</button>
-                            <button onClick={() => handleDeleteClass(cls.id)} disabled={deleting} className="text-xs px-2 py-1 rounded font-bold"
-                              style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
-                              {deleting ? "…" : "Delete"}
-                            </button>
-                          </div>
-                        ) : (
-                          <button onClick={() => setConfirmDeleteId(cls.id)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(192,40,40,0.5)" }} title="Delete class">
-                            <Trash2 size={14} />
+                        {isFull    && <span className="ml-2 text-xs font-bold" style={{ color: "#ff4444" }}>FULL</span>}
+                        {isWarning && <span className="ml-2 text-xs font-bold" style={{ color: "var(--cla-amber)" }}>NEAR FULL</span>}
+                      </td>
+                      <td><SlotBadge slot={cls.slot} /></td>
+                      <td style={{ color: "rgba(248,240,230,0.7)" }}>
+                        {cls.facilitator?.full_name ?? <span style={{ color: "rgba(248,240,230,0.3)" }}>Unassigned</span>}
+                      </td>
+                      <td>
+                        <span className="font-bold" style={{ color: isFull ? "#ff4444" : isWarning ? "var(--cla-amber)" : "var(--cla-off-white)" }}>{cls.member_count}</span>
+                        <span style={{ color: "rgba(248,240,230,0.4)" }}>/{cls.capacity_max}</span>
+                      </td>
+                      <td style={{ width: "120px" }}>
+                        <FillBar value={cls.member_count} max={cls.capacity_max} />
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => openFacilitatorEdit(cls)} className="p-1.5 rounded-lg transition-all" style={{ color: "#b47fea" }} title="Assign facilitator">
+                            <UserCog size={14} />
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                          {confirmDeleteId === cls.id ? (
+                            <div className="flex items-center gap-1.5 whitespace-nowrap">
+                              <span className="text-xs font-bold" style={{ color: "#ff6b6b" }}>Sure?</span>
+                              <button onClick={() => setConfirmDeleteId(null)} className="text-xs px-2 py-1 rounded" style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>No</button>
+                              <button onClick={() => handleDeleteClass(cls.id)} disabled={deleting} className="text-xs px-2 py-1 rounded font-bold"
+                                style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
+                                {deleting ? "…" : "Delete"}
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setConfirmDeleteId(cls.id)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(192,40,40,0.5)" }} title="Delete class">
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={7} style={{ background: "rgba(255,255,255,0.02)", padding: 0, borderTop: "1px solid rgba(228,148,12,0.1)" }}>
+                          <div className="px-4 py-4 flex flex-col gap-3">
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <span className="text-xs" style={{ color: "rgba(248,240,230,0.5)" }}>
+                                Facilitator: {cls.facilitator?.full_name ?? "Unassigned"}
+                              </span>
+                              <button onClick={() => openFacilitatorEdit(cls)} className="text-xs font-bold underline" style={{ color: "#b47fea" }}>
+                                Change
+                              </button>
+                              {cls.members.length > 0 && (
+                                <button onClick={() => downloadRosterCSV(cls)} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                                  style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.1)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)" }}>
+                                  <Download size={12} /> Download List
+                                </button>
+                              )}
+                            </div>
+
+                            {cls.members.length === 0 ? (
+                              <p className="text-center py-6 text-sm" style={{ color: "rgba(248,240,230,0.4)" }}>No members in this class yet.</p>
+                            ) : (
+                              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+                                <div className="overflow-x-auto">
+                                  <table className="cla-table" style={{ minWidth: "480px" }}>
+                                    <thead>
+                                      <tr><th>#</th><th>Name</th><th>Phone</th><th>Email</th><th>Actions</th></tr>
+                                    </thead>
+                                    <tbody>
+                                      {cls.members.map((member: any, idx: number) => (
+                                        <tr key={member.id}>
+                                          <td className="text-sm" style={{ color: "rgba(248,240,230,0.35)" }}>{idx + 1}</td>
+                                          <td className="font-semibold text-sm">{member.first_name} {member.last_name}</td>
+                                          <td style={{ color: "rgba(248,240,230,0.7)" }}>{member.phone}</td>
+                                          <td style={{ color: "rgba(248,240,230,0.55)" }}>{member.email ?? <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>}</td>
+                                          <td>
+                                            <div className="flex items-center gap-1.5">
+                                              <button onClick={() => { setMoveState({ member, fromClass: cls }); setTargetClassId(""); }}
+                                                className="p-1.5 rounded-lg transition-all" style={{ color: "#b47fea" }} title="Move to another class">
+                                                <MoveRight size={14} />
+                                              </button>
+                                              <button onClick={() => openEditMember(member)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(248,240,230,0.4)" }} title="Edit member">
+                                                <Edit2 size={14} />
+                                              </button>
+                                              {confirmDeleteMemberId === member.id ? (
+                                                <div className="flex items-center gap-1 whitespace-nowrap">
+                                                  <button onClick={() => setConfirmDeleteMemberId(null)} className="text-xs px-1.5 py-1 rounded" style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>No</button>
+                                                  <button onClick={() => handleDeleteRosterMember(member.id)} disabled={deletingMember} className="text-xs px-1.5 py-1 rounded font-bold"
+                                                    style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
+                                                    {deletingMember ? "…" : "Yes"}
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <button onClick={() => setConfirmDeleteMemberId(member.id)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(192,40,40,0.5)" }} title="Delete member">
+                                                  <Trash2 size={14} />
+                                                </button>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
           </table>
         </div>
       </div>
-
-      {/* Roster Modal */}
-      <Modal open={!!rosterClass} onClose={() => setRosterClass(null)} title={rosterClass ? `${rosterClass.name} — Roster` : ""} maxWidth="640px">
-        {rosterClass && (
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              <SlotBadge slot={rosterClass.slot} />
-              <span style={{ color: "rgba(248,240,230,0.5)", fontSize: "0.85rem" }}>
-                Facilitator: {rosterClass.facilitator?.full_name ?? "Unassigned"}
-              </span>
-              <button onClick={() => openFacilitatorEdit(rosterClass)} className="text-xs font-bold underline" style={{ color: "#b47fea" }}>
-                Change
-              </button>
-              <span className="ml-auto font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: rosterClass.member_count >= rosterClass.capacity_max ? "#ff4444" : "var(--cla-amber)" }}>
-                {rosterClass.member_count}/{rosterClass.capacity_max}
-              </span>
-            </div>
-
-            {rosterClass.members.length > 0 && (
-              <button onClick={() => downloadRosterCSV(rosterClass)} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold self-start transition-all"
-                style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.1)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)" }}>
-                <Download size={13} /> Download Class List
-              </button>
-            )}
-
-            {rosterClass.members.length === 0 ? (
-              <p className="text-center py-8 text-sm" style={{ color: "rgba(248,240,230,0.4)" }}>No members in this class yet.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {rosterClass.members.map((member: any) => (
-                  <div key={member.id} className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <div>
-                      <p className="font-semibold text-sm">{member.first_name} {member.last_name}</p>
-                      <p className="text-xs" style={{ color: "rgba(248,240,230,0.5)" }}>{member.phone}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={() => { setMoveState({ member, fromClass: rosterClass }); setRosterClass(null); setTargetClassId(""); }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                        style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(91,45,142,0.15)", color: "#b47fea", border: "1px solid rgba(91,45,142,0.3)" }}>
-                        <MoveRight size={12} /> Move
-                      </button>
-                      <button onClick={() => openEditMember(member)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(248,240,230,0.4)" }} title="Edit member">
-                        <Edit2 size={14} />
-                      </button>
-                      {confirmDeleteMemberId === member.id ? (
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <button onClick={() => setConfirmDeleteMemberId(null)} className="text-xs px-1.5 py-1 rounded" style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>No</button>
-                          <button onClick={() => handleDeleteRosterMember(member.id)} disabled={deletingMember} className="text-xs px-1.5 py-1 rounded font-bold"
-                            style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
-                            {deletingMember ? "…" : "Yes"}
-                          </button>
-                        </div>
-                      ) : (
-                        <button onClick={() => setConfirmDeleteMemberId(member.id)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(192,40,40,0.5)" }} title="Delete member">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
 
       {/* Move Member Modal */}
       <Modal open={!!moveState} onClose={() => setMoveState(null)} title="Move Member">
