@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, Fragment } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight, Download, Edit2, MoveRight, Plus, Trash2, UserCog } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, ChevronDown, ChevronRight, Download, Edit2, MoveRight, Plus, Search, Trash2, UserCog } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -40,6 +40,14 @@ export default function ClassesPage() {
   const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulk, setConfirmBulk]   = useState(false);
+  const [search, setSearch]             = useState("");
+  const [memberSortMode, setMemberSortMode] = useState<"none" | "name" | "registered">("none");
+
+  // Swap member modal
+  const [swapState, setSwapState]             = useState<{ member: Member; fromClass: ClassWithDetails } | null>(null);
+  const [swapTargetClassId, setSwapTargetClassId]   = useState("");
+  const [swapTargetMemberId, setSwapTargetMemberId] = useState("");
+  const [swapping, setSwapping]         = useState(false);
 
   // Add class modal
   const [addOpen, setAddOpen]           = useState(false);
@@ -223,6 +231,37 @@ export default function ClassesPage() {
     fetchClasses();
   }
 
+  async function handleSwap() {
+    if (!swapState || !swapTargetClassId || !swapTargetMemberId) return;
+    const targetClass = classes.find((c) => c.id === swapTargetClassId);
+    const targetMember = targetClass?.members.find((m: any) => m.id === swapTargetMemberId);
+    if (!targetMember) return;
+    setSwapping(true);
+    const supabase = createClient();
+    await supabase.from("members").update({ class_id: swapTargetClassId }).eq("id", swapState.member.id);
+    await supabase.from("members").update({ class_id: swapState.fromClass.id }).eq("id", targetMember.id);
+    setSwapping(false);
+    setSwapState(null);
+    setSwapTargetClassId("");
+    setSwapTargetMemberId("");
+    fetchClasses();
+  }
+
+  function sortMembers(list: any[]) {
+    if (memberSortMode === "name") {
+      return [...list].sort((a, b) => `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`));
+    }
+    if (memberSortMode === "registered") {
+      return [...list].sort((a, b) => new Date(a.registered_at).getTime() - new Date(b.registered_at).getTime());
+    }
+    return list;
+  }
+
+  function matchesSearch(m: any, q: string) {
+    const full = `${m.first_name} ${m.last_name}`.toLowerCase();
+    return full.includes(q) || (m.phone ?? "").includes(q) || (m.email ?? "").toLowerCase().includes(q);
+  }
+
   async function handleAddClass() {
     setAddError("");
     const chosenSlot = addSlot === "__new__" ? newSlotInput.trim() : addSlot.trim();
@@ -284,7 +323,13 @@ export default function ClassesPage() {
     downloadXLSX(rows, `${cls.name.replace(/\s+/g, "-")}-roster.xlsx`);
   }
 
-  const filtered = filterSlot === "all" ? classes : classes.filter((c) => c.slot === filterSlot);
+  const searchQuery = search.trim().toLowerCase();
+  const slotFiltered = filterSlot === "all" ? classes : classes.filter((c) => c.slot === filterSlot);
+  const filtered = searchQuery
+    ? slotFiltered
+        .map((c) => ({ ...c, members: c.members.filter((m: any) => matchesSearch(m, searchQuery)) }))
+        .filter((c) => c.members.length > 0)
+    : slotFiltered;
   const allSlots = Array.from(new Set(classes.map((c) => c.slot))).sort();
   const fullClasses = classes.filter((c) => c.member_count >= c.capacity_max);
 
@@ -331,6 +376,24 @@ export default function ClassesPage() {
           <Button variant="primary" size="sm" onClick={() => { setAddError(""); setAddSlot(""); setNewSlotInput(""); setAddOpen(true); }}>
             <Plus size={16} /> Add Class
           </Button>
+        </div>
+      </div>
+
+      {/* Search + member sort */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative w-full sm:flex-1 sm:min-w-[220px]">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "rgba(248,240,230,0.35)" }} />
+          <input type="text" placeholder="Search members by name, phone, or email…" value={search} onChange={(e) => setSearch(e.target.value)} className="cla-input pl-9 text-sm" />
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>Sort members:</span>
+          {([{ key: "name", label: "A–Z" }, { key: "registered", label: "Registration Date" }] as const).map(({ key, label }) => (
+            <button key={key} onClick={() => setMemberSortMode((m) => (m === key ? "none" : key))}
+              className="px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+              style={{ fontFamily: "Barlow Condensed, sans-serif", background: memberSortMode === key ? "linear-gradient(135deg, #E89A10, #F8BA18)" : "rgba(255,255,255,0.05)", color: memberSortMode === key ? "#200909" : "rgba(248,240,230,0.6)", border: memberSortMode === key ? "none" : "1px solid rgba(228,148,12,0.2)" }}>
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -407,7 +470,7 @@ export default function ClassesPage() {
                 const isFull    = cls.member_count >= cls.capacity_max;
                 const isWarning = pct >= 80 && !isFull;
                 const isChecked = selectedIds.has(cls.id);
-                const isExpanded = expandedIds.has(cls.id);
+                const isExpanded = searchQuery ? true : expandedIds.has(cls.id);
                 return (
                   <Fragment key={cls.id}>
                     <tr style={isChecked ? { background: "rgba(192,40,40,0.06)" } : undefined}>
@@ -486,7 +549,7 @@ export default function ClassesPage() {
                                       <tr><th>#</th><th>Name</th><th>Phone</th><th>Email</th><th>Actions</th></tr>
                                     </thead>
                                     <tbody>
-                                      {cls.members.map((member: any, idx: number) => (
+                                      {sortMembers(cls.members).map((member: any, idx: number) => (
                                         <tr key={member.id}>
                                           <td className="text-sm" style={{ color: "rgba(248,240,230,0.35)" }}>{idx + 1}</td>
                                           <td className="font-semibold text-sm">{member.first_name} {member.last_name}</td>
@@ -497,6 +560,10 @@ export default function ClassesPage() {
                                               <button onClick={() => { setMoveState({ member, fromClass: cls }); setTargetClassId(""); }}
                                                 className="p-1.5 rounded-lg transition-all" style={{ color: "#b47fea" }} title="Move to another class">
                                                 <MoveRight size={14} />
+                                              </button>
+                                              <button onClick={() => { setSwapState({ member, fromClass: cls }); setSwapTargetClassId(""); setSwapTargetMemberId(""); }}
+                                                className="p-1.5 rounded-lg transition-all" style={{ color: "#4ade80" }} title="Swap with a member in another class">
+                                                <ArrowLeftRight size={14} />
                                               </button>
                                               <button onClick={() => openEditMember(member)} className="p-1.5 rounded-lg transition-all" style={{ color: "rgba(248,240,230,0.4)" }} title="Edit member">
                                                 <Edit2 size={14} />
@@ -561,6 +628,58 @@ export default function ClassesPage() {
               <Button variant="secondary" onClick={() => setMoveState(null)} className="flex-1">Cancel</Button>
               <Button variant="primary" loading={!!movingId} disabled={!targetClassId} onClick={handleMove} className="flex-1">
                 <MoveRight size={16} /> Confirm Move
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Swap Member Modal */}
+      <Modal open={!!swapState} onClose={() => setSwapState(null)} title="Swap Member">
+        {swapState && (
+          <div className="flex flex-col gap-4">
+            <div className="p-4 rounded-xl" style={{ background: "rgba(228,148,12,0.06)", border: "1px solid rgba(228,148,12,0.15)" }}>
+              <p className="font-bold">{(swapState.member as any).first_name} {(swapState.member as any).last_name}</p>
+              <p className="text-sm" style={{ color: "rgba(248,240,230,0.55)" }}>
+                Currently in <span style={{ color: "var(--cla-amber)" }}>{swapState.fromClass.name}</span> ({swapState.fromClass.slot})
+              </p>
+            </div>
+            <p className="text-xs" style={{ color: "rgba(248,240,230,0.45)" }}>
+              Use this when the target class is full — pick a class and a member there to trade places with.
+            </p>
+            <div>
+              <label className="text-sm font-bold block mb-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Swap With Class</label>
+              <div className="relative">
+                <select value={swapTargetClassId} onChange={(e) => { setSwapTargetClassId(e.target.value); setSwapTargetMemberId(""); }} className="cla-input appearance-none pr-8">
+                  <option value="">Select a class…</option>
+                  {classes.filter((c) => c.id !== swapState.fromClass.id).map((c) => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.slot}) — {c.member_count}/{c.capacity_max}</option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(248,240,230,0.4)" }} />
+              </div>
+            </div>
+            {swapTargetClassId && (
+              <div>
+                <label className="text-sm font-bold block mb-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Swap With Member</label>
+                <div className="relative">
+                  <select value={swapTargetMemberId} onChange={(e) => setSwapTargetMemberId(e.target.value)} className="cla-input appearance-none pr-8">
+                    <option value="">Select a member…</option>
+                    {(classes.find((c) => c.id === swapTargetClassId)?.members ?? []).map((m: any) => (
+                      <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(248,240,230,0.4)" }} />
+                </div>
+                {(classes.find((c) => c.id === swapTargetClassId)?.members ?? []).length === 0 && (
+                  <p className="text-xs mt-1.5" style={{ color: "rgba(248,240,230,0.4)" }}>This class has no members to swap with.</p>
+                )}
+              </div>
+            )}
+            <div className="flex gap-3 mt-2">
+              <Button variant="secondary" onClick={() => setSwapState(null)} className="flex-1">Cancel</Button>
+              <Button variant="primary" loading={swapping} disabled={!swapTargetMemberId} onClick={handleSwap} className="flex-1">
+                <ArrowLeftRight size={16} /> Confirm Swap
               </Button>
             </div>
           </div>

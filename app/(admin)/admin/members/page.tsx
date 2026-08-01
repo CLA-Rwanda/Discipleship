@@ -39,7 +39,7 @@ export default function MembersPage() {
   const [membersLoading, setMembersLoading] = useState(true);
   const [search, setSearch]             = useState("");
   const [filterSlot, setFilterSlot]     = useState<string>("all");
-  const [sortByAttendance, setSortByAttendance] = useState(false);
+  const [sortMode, setSortMode]         = useState<"none" | "name" | "registered" | "attendance">("none");
   const [confirmDeleteId, setConfirmDeleteId]   = useState<string | null>(null);
   const [deleting, setDeleting]         = useState(false);
   const [gradThreshold, setGradThreshold] = useState(16);
@@ -107,7 +107,12 @@ export default function MembersPage() {
       const matchSearch = q === "" || fullName.includes(q) || m.phone.includes(q) || (m.email ?? "").toLowerCase().includes(q);
       return matchSearch && (filterSlot === "all" || m.preferred_slot === filterSlot);
     })
-    .sort((a, b) => sortByAttendance ? b.attendance_count - a.attendance_count : 0);
+    .sort((a, b) => {
+      if (sortMode === "attendance") return b.attendance_count - a.attendance_count;
+      if (sortMode === "name")       return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
+      if (sortMode === "registered") return new Date(a.registered_at).getTime() - new Date(b.registered_at).getTime();
+      return 0;
+    });
 
   async function handleDeleteMember(id: string) {
     setDeleting(true);
@@ -266,6 +271,17 @@ export default function MembersPage() {
             ))}
           </div>
 
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>Sort:</span>
+            {([{ key: "name", label: "A–Z" }, { key: "registered", label: "Registration Date" }] as const).map(({ key, label }) => (
+              <button key={key} onClick={() => setSortMode((m) => (m === key ? "none" : key))}
+                className="px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+                style={{ fontFamily: "Barlow Condensed, sans-serif", background: sortMode === key ? "linear-gradient(135deg, #E89A10, #F8BA18)" : "rgba(255,255,255,0.05)", color: sortMode === key ? "#200909" : "rgba(248,240,230,0.6)", border: sortMode === key ? "none" : "1px solid rgba(228,148,12,0.2)" }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
           {membersLoading ? (
             <div className="flex items-center justify-center h-48">
               <div className="spinner" style={{ width: 28, height: 28, borderTopColor: "var(--cla-amber)", borderColor: "rgba(228,148,12,0.2)" }} />
@@ -278,7 +294,7 @@ export default function MembersPage() {
                     <tr>
                       <th>#</th><th>Name</th><th>Phone</th><th>Email</th><th>Slot</th><th>Class</th>
                       <th>
-                        <button onClick={() => setSortByAttendance((v) => !v)} className="flex items-center gap-1 font-bold transition-colors" style={{ color: sortByAttendance ? "var(--cla-amber)" : "inherit" }}>
+                        <button onClick={() => setSortMode((m) => (m === "attendance" ? "none" : "attendance"))} className="flex items-center gap-1 font-bold transition-colors" style={{ color: sortMode === "attendance" ? "var(--cla-amber)" : "inherit" }}>
                           Attended <ArrowUpDown size={11} />
                         </button>
                       </th>

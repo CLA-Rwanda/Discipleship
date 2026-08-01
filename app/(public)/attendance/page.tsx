@@ -140,9 +140,6 @@ export default function AttendancePage() {
             <h1 className="text-2xl font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>
               Attendance Closed
             </h1>
-            <p className="mt-2 text-sm" style={{ color: "rgba(248,240,230,0.6)" }}>
-              Attendance can only be marked during Sunday service hours. Please come back when you're at church.
-            </p>
           </div>
         </div>
       </div>
