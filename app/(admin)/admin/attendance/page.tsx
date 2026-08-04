@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Search, Download, ClipboardList, GraduationCap, Pencil, Trash2, Check, X } from "lucide-react";
+import { Search, Download, ClipboardList, GraduationCap, Pencil, Trash2, Check, X, CalendarCheck } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import {
   updateAttendanceName,
@@ -20,8 +20,10 @@ interface AttendanceRow {
   member_name: string;
   service_slot: string;
   attended_at: string;
+  class_id: string | null;
   class_name: string | null;
   facilitator_name: string | null;
+  member_id: string | null;
   is_linked: boolean;
 }
 
@@ -31,12 +33,50 @@ interface ProgressRow {
   count: number;
 }
 
-type Tab = "progress" | "log";
+interface ClassRosterInfo {
+  id: string;
+  name: string;
+  slot: string;
+  facilitator_name: string | null;
+  member_count: number;
+}
+
+interface SnapshotClassRow {
+  name: string;
+  slot: string;
+  facilitator: string | null;
+  count: number;
+  rosterSize: number;
+}
+
+type Tab = "snapshot" | "progress" | "log";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function normName(s: string) {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function dateKeyOf(iso: string): string {
+  return new Date(iso).toISOString().slice(0, 10);
+}
+
+function formatDateLabel(key: string): string {
+  return new Date(key + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short", year: "numeric" });
+}
+
+function formatDateShort(key: string): string {
+  return new Date(key + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+function exportSnapshotCSV(classes: SnapshotClassRow[], label: string) {
+  downloadXLSX([
+    ["Class", "Facilitator", "Slot", "Attended", "Roster Size", "Turnout %"],
+    ...classes.map((c) => [
+      c.name, c.facilitator ?? "", c.slot, c.count,
+      c.rosterSize || "", c.rosterSize > 0 ? Math.round((c.count / c.rosterSize) * 100) : "",
+    ]),
+  ], `cla-attendance-snapshot-${label}.xlsx`);
 }
 
 function exportLogCSV(rows: AttendanceRow[]) {
@@ -68,9 +108,13 @@ function exportProgressCSV(rows: ProgressRow[], threshold: number) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AttendancePage() {
-  const [tab, setTab] = useState<Tab>("progress");
+  const [tab, setTab] = useState<Tab>("snapshot");
   const [rows, setRows] = useState<AttendanceRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [classRoster, setClassRoster] = useState<ClassRosterInfo[]>([]);
+
+  // Snapshot tab state
+  const [selectedDate, setSelectedDate] = useState<string>("all");
 
   // Log tab state
   const [logSearch, setLogSearch] = useState("");
@@ -95,7 +139,8 @@ export default function AttendancePage() {
     Promise.all([
       getAllAttendanceForAdmin(),
       supabase.from("app_settings").select("key,value"),
-    ]).then(([data, { data: settings }]) => {
+      supabase.from("classes").select("id, name, slot, facilitators(full_name), members(count)").eq("is_active", true),
+    ]).then(([data, { data: settings }, { data: classData }]) => {
       setRows(data);
       if (settings) {
         const map = Object.fromEntries(settings.map((s: { key: string; value: string }) => [s.key, s.value]));
@@ -103,9 +148,63 @@ export default function AttendancePage() {
         const thresholdPct  = parseInt(map.attendance_threshold_pct) || 75;
         setThreshold(Math.ceil((totalSessions * thresholdPct) / 100));
       }
+      setClassRoster((classData ?? []).map((c: any) => ({
+        id:               c.id,
+        name:             c.name,
+        slot:             c.slot,
+        facilitator_name: c.facilitators?.full_name ?? null,
+        member_count:     c.members?.[0]?.count ?? 0,
+      })));
       setLoading(false);
     });
   }, []);
+
+  // ── Snapshot tab ───────────────────────────────────────────────────────────
+  const availableDates = useMemo(
+    () => Array.from(new Set(rows.map((r) => dateKeyOf(r.attended_at)))).sort((a, b) => b.localeCompare(a)),
+    [rows]
+  );
+
+  const snapshotRows = useMemo(
+    () => (selectedDate === "all" ? rows : rows.filter((r) => dateKeyOf(r.attended_at) === selectedDate)),
+    [rows, selectedDate]
+  );
+
+  const snapshotStats = useMemo(() => {
+    const uniqueSet = new Set(snapshotRows.map((r) => r.member_id ?? normName(r.member_name)));
+    const bySlot: Record<string, number> = {};
+    const byClass = new Map<string, SnapshotClassRow>();
+    for (const r of snapshotRows) {
+      bySlot[r.service_slot] = (bySlot[r.service_slot] ?? 0) + 1;
+      const classKey = r.class_id ?? `unlinked:${r.class_name ?? "none"}`;
+      if (!byClass.has(classKey)) {
+        const roster = classRoster.find((c) => c.id === r.class_id);
+        byClass.set(classKey, {
+          name:       r.class_name ?? "Unassigned",
+          slot:       r.service_slot,
+          facilitator: r.facilitator_name,
+          count:      0,
+          rosterSize: roster?.member_count ?? 0,
+        });
+      }
+      byClass.get(classKey)!.count++;
+    }
+    return {
+      total: snapshotRows.length,
+      unique: uniqueSet.size,
+      bySlot,
+      classes: Array.from(byClass.values()).sort((a, b) => b.count - a.count),
+    };
+  }, [snapshotRows, classRoster]);
+
+  const previousDateStats = useMemo(() => {
+    if (selectedDate === "all") return null;
+    const idx = availableDates.indexOf(selectedDate);
+    const prevDate = availableDates[idx + 1];
+    if (!prevDate) return null;
+    const total = rows.filter((r) => dateKeyOf(r.attended_at) === prevDate).length;
+    return { date: prevDate, total };
+  }, [selectedDate, availableDates, rows]);
 
   // ── Log tab ────────────────────────────────────────────────────────────────
   const filteredLog = rows.filter((r) => {
@@ -208,11 +307,11 @@ export default function AttendancePage() {
           </p>
         </div>
         <button
-          onClick={() =>
-            tab === "log"
-              ? exportLogCSV(filteredLog)
-              : exportProgressCSV(filteredProgress, threshold)
-          }
+          onClick={() => {
+            if (tab === "log") exportLogCSV(filteredLog);
+            else if (tab === "progress") exportProgressCSV(filteredProgress, threshold);
+            else exportSnapshotCSV(snapshotStats.classes, selectedDate);
+          }}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all"
           style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.1)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)" }}
         >
@@ -224,6 +323,7 @@ export default function AttendancePage() {
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-xl w-full sm:w-fit overflow-x-auto" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(228,148,12,0.1)" }}>
         {([
+          { key: "snapshot", label: "Sunday Snapshot",     icon: CalendarCheck },
           { key: "progress", label: "Graduation Progress", icon: GraduationCap },
           { key: "log",      label: "Attendance Log",      icon: ClipboardList  },
         ] as const).map(({ key, label, icon: Icon }) => (
@@ -245,6 +345,103 @@ export default function AttendancePage() {
         </div>
       ) : (
         <>
+          {/* ══ SNAPSHOT TAB ══════════════════════════════════════════════ */}
+          {tab === "snapshot" && (
+            <div className="flex flex-col gap-5">
+              {/* Date selector */}
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                <button onClick={() => setSelectedDate("all")}
+                  className="shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-all"
+                  style={{ minHeight: 44, fontFamily: "Barlow Condensed, sans-serif", background: selectedDate === "all" ? "linear-gradient(135deg,#E89A10,#F8BA18)" : "rgba(255,255,255,0.05)", color: selectedDate === "all" ? "#200909" : "rgba(248,240,230,0.6)", border: selectedDate === "all" ? "none" : "1px solid rgba(228,148,12,0.2)" }}>
+                  All Time
+                </button>
+                {availableDates.map((d) => (
+                  <button key={d} onClick={() => setSelectedDate(d)}
+                    className="shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap"
+                    style={{ minHeight: 44, fontFamily: "Barlow Condensed, sans-serif", background: selectedDate === d ? "linear-gradient(135deg,#E89A10,#F8BA18)" : "rgba(255,255,255,0.05)", color: selectedDate === d ? "#200909" : "rgba(248,240,230,0.6)", border: selectedDate === d ? "none" : "1px solid rgba(228,148,12,0.2)" }}>
+                    {formatDateShort(d)}
+                  </button>
+                ))}
+              </div>
+
+              {snapshotStats.total === 0 ? (
+                <div className="cla-card p-12 text-center" style={{ color: "rgba(248,240,230,0.35)" }}>
+                  No attendance recorded {selectedDate === "all" ? "yet" : `on ${formatDateLabel(selectedDate)}`}.
+                </div>
+              ) : (
+                <>
+                  <h2 className="text-xl font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>
+                    {selectedDate === "all" ? "All-Time Summary" : formatDateLabel(selectedDate)}
+                  </h2>
+
+                  {/* Stat cards */}
+                  <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+                    <div className="p-4 rounded-xl" style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.25)" }}>
+                      <p className="text-xs uppercase tracking-widest mb-1" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Total Attendance</p>
+                      <p className="text-3xl font-extrabold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "var(--cla-amber-light)" }}>{snapshotStats.total}</p>
+                      {previousDateStats && (
+                        <p className="text-xs mt-1 font-semibold" style={{ color: snapshotStats.total >= previousDateStats.total ? "#C8D400" : "#ff6b6b" }}>
+                          {snapshotStats.total >= previousDateStats.total ? "▲" : "▼"} {Math.abs(snapshotStats.total - previousDateStats.total)} vs {formatDateShort(previousDateStats.date)}
+                        </p>
+                      )}
+                    </div>
+                    <div className="p-4 rounded-xl" style={{ background: "rgba(200,212,0,0.08)", border: "1px solid rgba(200,212,0,0.25)" }}>
+                      <p className="text-xs uppercase tracking-widest mb-1" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Unique Students</p>
+                      <p className="text-3xl font-extrabold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "#C8D400" }}>{snapshotStats.unique}</p>
+                    </div>
+                    <div className="p-4 rounded-xl" style={{ background: "rgba(91,45,142,0.08)", border: "1px solid rgba(91,45,142,0.25)" }}>
+                      <p className="text-xs uppercase tracking-widest mb-1" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Classes Represented</p>
+                      <p className="text-3xl font-extrabold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "#b47fea" }}>{snapshotStats.classes.length}</p>
+                    </div>
+                    {Object.entries(snapshotStats.bySlot).sort(([a], [b]) => a.localeCompare(b)).map(([slot, count]) => (
+                      <div key={slot} className="p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <p className="text-xs uppercase tracking-widest mb-1" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>{slot.toUpperCase()} Service</p>
+                        <p className="text-3xl font-extrabold">{count}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Per-class breakdown */}
+                  <div className="rounded-xl overflow-hidden" style={{ background: "var(--cla-bg-card)", border: "1px solid rgba(228,148,12,0.15)" }}>
+                    <div className="overflow-x-auto">
+                      <table className="cla-table" style={{ minWidth: "560px" }}>
+                        <thead>
+                          <tr><th>Class</th><th>Facilitator</th><th>Slot</th><th>Attended</th><th>Turnout</th></tr>
+                        </thead>
+                        <tbody>
+                          {snapshotStats.classes.map((c) => {
+                            const pct = c.rosterSize > 0 ? Math.round((c.count / c.rosterSize) * 100) : null;
+                            return (
+                              <tr key={`${c.name}-${c.slot}`}>
+                                <td className="font-semibold">{c.name}</td>
+                                <td style={{ color: "rgba(248,240,230,0.6)" }}>{c.facilitator ?? <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>}</td>
+                                <td><SlotBadge slot={c.slot as any} /></td>
+                                <td className="font-bold">
+                                  {c.count}
+                                  {c.rosterSize > 0 && <span style={{ color: "rgba(248,240,230,0.4)", fontWeight: 400 }}> /{c.rosterSize}</span>}
+                                </td>
+                                <td>
+                                  {pct !== null ? (
+                                    <div className="flex items-center gap-2">
+                                      <div className="rounded-full overflow-hidden" style={{ width: 80, height: 6, background: "rgba(255,255,255,0.07)" }}>
+                                        <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: pct >= 75 ? "linear-gradient(90deg,#a8c000,#C8D400)" : "linear-gradient(90deg,#E89A10,#F8BA18)" }} />
+                                      </div>
+                                      <span className="text-xs" style={{ color: "rgba(248,240,230,0.5)" }}>{pct}%</span>
+                                    </div>
+                                  ) : <span style={{ color: "rgba(248,240,230,0.3)" }}>—</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {/* ══ PROGRESS TAB ══════════════════════════════════════════════ */}
           {tab === "progress" && (
             <div className="flex flex-col gap-5">

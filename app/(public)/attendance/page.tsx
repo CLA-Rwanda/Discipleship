@@ -30,8 +30,9 @@ export default function AttendancePage() {
   const [timeLocked, setTimeLocked]   = useState(false);
   const [lockChecked, setLockChecked] = useState(false);
   const [prefillName, setPrefillName] = useState<string | null>(null);
+  const [needsOtherName, setNeedsOtherName] = useState(false);
 
-  const [form, setForm] = useState({ first_name: "", last_name: "" });
+  const [form, setForm] = useState({ first_name: "", last_name: "", other_name: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Check time lock
@@ -49,7 +50,7 @@ export default function AttendancePage() {
       if (!raw) return;
       const data = JSON.parse(raw) as { firstName: string; lastName: string };
       if (data.firstName && data.lastName) {
-        setForm({ first_name: data.firstName, last_name: data.lastName });
+        setForm({ first_name: data.firstName, last_name: data.lastName, other_name: "" });
         setPrefillName(data.firstName);
       }
     } catch {
@@ -60,7 +61,8 @@ export default function AttendancePage() {
   function clearPrefill() {
     localStorage.removeItem(STORAGE_KEY);
     setPrefillName(null);
-    setForm({ first_name: "", last_name: "" });
+    setForm({ first_name: "", last_name: "", other_name: "" });
+    setNeedsOtherName(false);
   }
 
   function handleMarkAnother() {
@@ -68,14 +70,16 @@ export default function AttendancePage() {
     setPrefillName(null);
     setSubmitted(false);
     setSuccessData(null);
-    setForm({ first_name: "", last_name: "" });
+    setForm({ first_name: "", last_name: "", other_name: "" });
     setSuggestion(null);
+    setNeedsOtherName(false);
   }
 
   function validate() {
     const e: Record<string, string> = {};
     if (!form.first_name.trim()) e.first_name = "First name is required";
     if (!form.last_name.trim())  e.last_name  = "Last name is required";
+    if (needsOtherName && !form.other_name.trim()) e.other_name = "Enter your middle name or nickname to confirm who you are";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -90,12 +94,18 @@ export default function AttendancePage() {
     const result = await logAttendance({
       first_name: form.first_name.trim(),
       last_name:  form.last_name.trim(),
+      other_name: form.other_name.trim() || undefined,
     });
 
     setLoading(false);
 
     if ("needsSuggestion" in result && result.needsSuggestion) {
       setSuggestion({ text: result.suggestion });
+      return;
+    }
+
+    if ("needsOtherName" in result && result.needsOtherName) {
+      setNeedsOtherName(true);
       return;
     }
 
@@ -221,13 +231,13 @@ export default function AttendancePage() {
           )}
 
           {/* Name */}
-          <div className="cla-card p-5">
+          <div className="cla-card p-5 flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label="First Name"
                 placeholder="e.g. Amara"
                 value={form.first_name}
-                onChange={(e) => { setForm((f) => ({ ...f, first_name: e.target.value })); setSuggestion(null); }}
+                onChange={(e) => { setForm((f) => ({ ...f, first_name: e.target.value })); setSuggestion(null); setNeedsOtherName(false); }}
                 error={errors.first_name}
                 required
               />
@@ -235,12 +245,34 @@ export default function AttendancePage() {
                 label="Last Name"
                 placeholder="e.g. Johnson"
                 value={form.last_name}
-                onChange={(e) => { setForm((f) => ({ ...f, last_name: e.target.value })); setSuggestion(null); }}
+                onChange={(e) => { setForm((f) => ({ ...f, last_name: e.target.value })); setSuggestion(null); setNeedsOtherName(false); }}
                 error={errors.last_name}
                 required
               />
             </div>
+            {needsOtherName && (
+              <Input
+                label="Middle Name / Nickname"
+                placeholder="Whatever you entered when you registered"
+                value={form.other_name}
+                onChange={(e) => setForm((f) => ({ ...f, other_name: e.target.value }))}
+                error={errors.other_name}
+                required
+              />
+            )}
           </div>
+
+          {/* Duplicate-name disambiguation notice */}
+          {needsOtherName && (
+            <div className="cla-card p-4 flex flex-col gap-2" style={{ border: "1px solid rgba(228,148,12,0.4)" }}>
+              <div className="flex items-start gap-2">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" style={{ color: "var(--cla-amber)" }} />
+                <p className="text-sm" style={{ color: "rgba(248,240,230,0.7)" }}>
+                  More than one person is registered under <strong style={{ color: "var(--cla-amber-light)" }}>{form.first_name} {form.last_name}</strong>. Enter the middle name or nickname you gave at registration above to confirm it's you.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Name suggestion warning */}
           {suggestion && (

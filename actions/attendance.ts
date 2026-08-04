@@ -8,8 +8,10 @@ export interface AdminAttendanceRow {
   member_name: string;
   service_slot: string;
   attended_at: string;
+  class_id: string | null;
   class_name: string | null;
   facilitator_name: string | null;
+  member_id: string | null;
   is_linked: boolean;
 }
 
@@ -22,7 +24,7 @@ export async function getAllAttendanceForAdmin(): Promise<AdminAttendanceRow[]> 
   while (true) {
     const { data, error } = await admin
       .from("attendance")
-      .select("id, member_name, service_slot, attended_at, member_id, classes(name, facilitators(full_name))")
+      .select("id, member_name, service_slot, attended_at, member_id, class_id, classes(name, facilitators(full_name))")
       .order("attended_at", { ascending: false })
       .range(from, from + PAGE - 1);
 
@@ -37,8 +39,10 @@ export async function getAllAttendanceForAdmin(): Promise<AdminAttendanceRow[]> 
     member_name:      r.member_name,
     service_slot:     r.service_slot,
     attended_at:      r.attended_at,
+    class_id:         r.class_id ?? null,
     class_name:       r.classes?.name ?? null,
     facilitator_name: r.classes?.facilitators?.full_name ?? null,
+    member_id:        r.member_id ?? null,
     is_linked:        !!r.member_id,
   }));
 }
@@ -81,11 +85,32 @@ export async function getDistinctSlots(): Promise<string[]> {
 export type AttendanceSubmitResult =
   | { success: true; slot: string; class_name: string; linked: boolean }
   | { success: false; error: string }
-  | { needsSuggestion: true; suggestion: string; matchType: "reversed" };
+  | { needsSuggestion: true; suggestion: string; matchType: "reversed" }
+  | { needsOtherName: true };
+
+async function recordAttendance(
+  admin: ReturnType<typeof createAdminClient>,
+  member: { id: string; class_id: string; other_name?: string | null; classes: { name: string; slot: string } },
+  fn: string,
+  ln: string
+): Promise<AttendanceSubmitResult> {
+  const cls = member.classes;
+  const on = (member.other_name ?? "").trim();
+  const { error } = await admin.from("attendance").insert({
+    member_name:  on ? `${fn} ${on} ${ln}` : `${fn} ${ln}`,
+    class_id:     member.class_id,
+    service_slot: cls.slot,
+    attended_at:  new Date().toISOString(),
+    member_id:    member.id,
+  });
+  if (error) return { success: false, error: error.message };
+  return { success: true, slot: cls.slot, class_name: cls.name, linked: true };
+}
 
 export async function logAttendance(formData: {
   first_name: string;
   last_name: string;
+  other_name?: string;
 }): Promise<AttendanceSubmitResult> {
   const { locked } = await isFormLocked();
   if (locked) {
@@ -95,34 +120,37 @@ export async function logAttendance(formData: {
   const admin = createAdminClient();
   const fn = formData.first_name.trim();
   const ln = formData.last_name.trim();
+  const on = (formData.other_name ?? "").trim();
 
-  // Exact case-insensitive match
+  // Exact case-insensitive match on first + last name
   const { data: exact } = await admin
     .from("members")
-    .select("id, class_id, classes(name, slot)")
+    .select("id, class_id, other_name, classes(name, slot)")
     .ilike("first_name", fn)
-    .ilike("last_name", ln)
-    .limit(2);
+    .ilike("last_name", ln);
 
-  if (exact && exact.length > 1) {
+  const matches = (exact ?? []) as any[];
+
+  if (matches.length > 1) {
+    // Multiple people share this exact name — disambiguate using the middle
+    // name/nickname captured at registration.
+    if (!on) {
+      return { needsOtherName: true };
+    }
+    const disambiguated = matches.filter(
+      (m) => (m.other_name ?? "").trim().toLowerCase() === on.toLowerCase()
+    );
+    if (disambiguated.length === 1) {
+      return recordAttendance(admin, disambiguated[0], fn, ln);
+    }
     return {
       success: false,
-      error: "Multiple people with this name were found. Please see your facilitator to record your attendance.",
+      error: "We couldn't match that middle name to anyone registered under this name. Please see your facilitator to record your attendance.",
     };
   }
 
-  if (exact && exact.length === 1) {
-    const member = exact[0] as any;
-    const cls = member.classes;
-    const { error } = await admin.from("attendance").insert({
-      member_name:  `${fn} ${ln}`,
-      class_id:     member.class_id,
-      service_slot: cls.slot,
-      attended_at:  new Date().toISOString(),
-      member_id:    member.id,
-    });
-    if (error) return { success: false, error: error.message };
-    return { success: true, slot: cls.slot, class_name: cls.name, linked: true };
+  if (matches.length === 1) {
+    return recordAttendance(admin, matches[0], fn, ln);
   }
 
   // Try reversed name order

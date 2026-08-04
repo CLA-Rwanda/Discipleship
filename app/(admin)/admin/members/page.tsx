@@ -103,7 +103,7 @@ export default function MembersPage() {
   const filtered = members
     .filter((m) => {
       const q = search.toLowerCase();
-      const fullName = `${m.first_name} ${m.last_name}`.toLowerCase();
+      const fullName = `${m.first_name} ${m.other_name ?? ""} ${m.last_name}`.toLowerCase();
       const matchSearch = q === "" || fullName.includes(q) || m.phone.includes(q) || (m.email ?? "").toLowerCase().includes(q);
       return matchSearch && (filterSlot === "all" || m.preferred_slot === filterSlot);
     })
@@ -156,9 +156,9 @@ export default function MembersPage() {
 
   function exportCSV() {
     const rows = [
-      ["First Name", "Last Name", "Phone", "Email", "Slot", "Class", "Facilitator", "Sessions Attended", "Registered"],
+      ["First Name", "Middle Name", "Last Name", "Phone", "Email", "Slot", "Class", "Facilitator", "Sessions Attended", "Registered"],
       ...filtered.map((m) => [
-        m.first_name, m.last_name, m.phone, m.email ?? "",
+        m.first_name, m.other_name ?? "", m.last_name, m.phone, m.email ?? "",
         m.preferred_slot, m.class_name ?? "", m.facilitator_name ?? "",
         m.attendance_count,
         new Date(m.registered_at).toLocaleDateString("en-GB"),
@@ -307,7 +307,10 @@ export default function MembersPage() {
                     ) : filtered.map((m, idx) => (
                       <tr key={m.id}>
                         <td className="text-sm" style={{ color: "rgba(248,240,230,0.35)" }}>{idx + 1}</td>
-                        <td className="font-semibold">{m.first_name} {m.last_name}</td>
+                        <td className="font-semibold">
+                          {m.first_name} {m.last_name}
+                          {m.other_name && <span className="ml-1.5 font-normal text-xs" style={{ color: "rgba(248,240,230,0.45)" }}>({m.other_name})</span>}
+                        </td>
                         <td style={{ color: "rgba(248,240,230,0.7)" }}>{m.phone}</td>
                         <td style={{ color: "rgba(248,240,230,0.55)" }}>{m.email ?? <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>}</td>
                         <td><SlotBadge slot={m.preferred_slot} /></td>

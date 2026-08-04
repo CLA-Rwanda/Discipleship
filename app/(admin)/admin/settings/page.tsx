@@ -25,7 +25,7 @@ const TRASH_TABLE_LABELS: Record<string, string> = {
 function describeTrashItem(entry: TrashEntry): string {
   const d = entry.data;
   switch (entry.table_name) {
-    case "members":      return `${d.first_name} ${d.last_name}`;
+    case "members":      return d.other_name ? `${d.first_name} ${d.other_name} ${d.last_name}` : `${d.first_name} ${d.last_name}`;
     case "facilitators": return d.full_name;
     case "classes":      return `${d.name} (${d.slot})`;
     case "attendance":   return `${d.member_name} — ${new Date(d.attended_at).toLocaleDateString("en-GB")}`;

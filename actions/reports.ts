@@ -27,6 +27,7 @@ export interface ReportClass {
   slot: string;
   attendanceCount: number;
   uniqueMembers: number;
+  attendedMembers: number;
   sundays: string[];
   members: ReportMember[];
 }
@@ -145,6 +146,7 @@ export async function getReportPreview(
         slot: cls.slot,
         attendanceCount: clsMembers.reduce((s, m) => s + m.attendedCount, 0),
         uniqueMembers:   clsMembers.length,
+        attendedMembers: clsMembers.filter((m) => m.attendedCount > 0).length,
         sundays,
         members: clsMembers,
       };

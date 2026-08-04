@@ -215,7 +215,7 @@ export default function ClassesPage() {
   }
 
   function matchesSearch(m: any, q: string) {
-    const full = `${m.first_name} ${m.last_name}`.toLowerCase();
+    const full = `${m.first_name} ${m.other_name ?? ""} ${m.last_name}`.toLowerCase();
     return full.includes(q) || (m.phone ?? "").includes(q) || (m.email ?? "").toLowerCase().includes(q);
   }
 
@@ -450,7 +450,10 @@ export default function ClassesPage() {
                                       {sortMembers(cls.members).map((member: any, idx: number) => (
                                         <tr key={member.id}>
                                           <td className="text-sm" style={{ color: "rgba(248,240,230,0.35)" }}>{idx + 1}</td>
-                                          <td className="font-semibold text-sm">{member.first_name} {member.last_name}</td>
+                                          <td className="font-semibold text-sm">
+                                            {member.first_name} {member.last_name}
+                                            {member.other_name && <span className="ml-1.5 font-normal text-xs" style={{ color: "rgba(248,240,230,0.45)" }}>({member.other_name})</span>}
+                                          </td>
                                           <td style={{ color: "rgba(248,240,230,0.7)" }}>{member.phone}</td>
                                           <td style={{ color: "rgba(248,240,230,0.55)" }}>{member.email ?? <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>}</td>
                                           <td>
@@ -505,7 +508,10 @@ export default function ClassesPage() {
         {moveState && (
           <div className="flex flex-col gap-4">
             <div className="p-4 rounded-xl" style={{ background: "rgba(228,148,12,0.06)", border: "1px solid rgba(228,148,12,0.15)" }}>
-              <p className="font-bold">{(moveState.member as any).first_name} {(moveState.member as any).last_name}</p>
+              <p className="font-bold">
+                {(moveState.member as any).first_name} {(moveState.member as any).last_name}
+                {(moveState.member as any).other_name && <span className="font-normal" style={{ color: "rgba(248,240,230,0.5)" }}> ({(moveState.member as any).other_name})</span>}
+              </p>
               <p className="text-sm" style={{ color: "rgba(248,240,230,0.55)" }}>
                 Currently in <span style={{ color: "var(--cla-amber)" }}>{moveState.fromClass.name}</span> ({moveState.fromClass.slot})
               </p>
@@ -537,7 +543,10 @@ export default function ClassesPage() {
         {swapState && (
           <div className="flex flex-col gap-4">
             <div className="p-4 rounded-xl" style={{ background: "rgba(228,148,12,0.06)", border: "1px solid rgba(228,148,12,0.15)" }}>
-              <p className="font-bold">{(swapState.member as any).first_name} {(swapState.member as any).last_name}</p>
+              <p className="font-bold">
+                {(swapState.member as any).first_name} {(swapState.member as any).last_name}
+                {(swapState.member as any).other_name && <span className="font-normal" style={{ color: "rgba(248,240,230,0.5)" }}> ({(swapState.member as any).other_name})</span>}
+              </p>
               <p className="text-sm" style={{ color: "rgba(248,240,230,0.55)" }}>
                 Currently in <span style={{ color: "var(--cla-amber)" }}>{swapState.fromClass.name}</span> ({swapState.fromClass.slot})
               </p>
@@ -564,7 +573,7 @@ export default function ClassesPage() {
                   <select value={swapTargetMemberId} onChange={(e) => setSwapTargetMemberId(e.target.value)} className="cla-input appearance-none pr-8">
                     <option value="">Select a member…</option>
                     {(classes.find((c) => c.id === swapTargetClassId)?.members ?? []).map((m: any) => (
-                      <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>
+                      <option key={m.id} value={m.id}>{m.first_name}{m.other_name ? ` ${m.other_name}` : ""} {m.last_name}</option>
                     ))}
                   </select>
                   <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(248,240,230,0.4)" }} />

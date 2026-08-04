@@ -313,7 +313,11 @@ export default function ReportsPage() {
                 <p className="text-xs" style={{ color: "rgba(248,240,230,0.5)" }}>
                   {fmtDate(preview.dateFrom)} — {fmtDate(preview.dateTo)} ·{" "}
                   <span style={{ color: "var(--cla-amber)" }}>
-                    {preview.classes.reduce((s, c) => s + c.uniqueMembers, 0)} unique members
+                    {preview.classes.reduce((s, c) => s + c.uniqueMembers, 0)} enrolled
+                  </span>
+                  {" · "}
+                  <span style={{ color: "#C8D400" }}>
+                    {preview.classes.reduce((s, c) => s + c.attendedMembers, 0)} attended
                   </span>
                   {" · "}{preview.totalAttendance} sessions · {preview.classes.length} {preview.classes.length === 1 ? "class" : "classes"}
                 </p>
@@ -358,12 +362,9 @@ export default function ReportsPage() {
                   <div className="flex items-center gap-3">
                     <span
                       className="text-xs font-bold"
-                      style={{
-                        fontFamily: "Barlow Condensed, sans-serif",
-                        color: cls.uniqueMembers > 0 ? "var(--cla-amber)" : "rgba(248,240,230,0.3)",
-                      }}
+                      style={{ fontFamily: "Barlow Condensed, sans-serif", color: "#C8D400" }}
                     >
-                      {cls.uniqueMembers} {cls.uniqueMembers === 1 ? "member" : "members"}
+                      {cls.attendedMembers} of {cls.uniqueMembers} attended
                     </span>
                     <span className="text-xs" style={{ color: "rgba(248,240,230,0.3)" }}>
                       {cls.attendanceCount} sessions
