@@ -1,8 +1,11 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { assertFullAdmin } from "@/lib/assert-admin";
+
+type AdminClient = ReturnType<typeof createAdminClient>;
 
 async function assertAdmin() {
   const supabase = createServerSupabaseClient();
@@ -34,6 +37,128 @@ export async function getAuditLog(limit = 50): Promise<AuditLogEntry[]> {
     .limit(limit);
   if (error) return [];
   return data as AuditLogEntry[];
+}
+
+// ── Recycle bin ────────────────────────────────────────────────────────────
+
+const TRASH_RETENTION_DAYS = 15;
+
+export interface TrashEntry {
+  id: string;
+  batch_id: string;
+  table_name: "members" | "facilitators" | "classes" | "attendance";
+  record_id: string;
+  data: any;
+  related: any;
+  deleted_by: string | null;
+  action: string;
+  deleted_at: string;
+  expires_at: string;
+}
+
+function buildTrashRow(
+  batchId: string,
+  tableName: TrashEntry["table_name"],
+  recordId: string,
+  data: unknown,
+  related: unknown,
+  actorEmail: string | null | undefined,
+  action: string
+) {
+  return {
+    batch_id: batchId,
+    table_name: tableName,
+    record_id: recordId,
+    data,
+    related: related ?? null,
+    deleted_by: actorEmail ?? null,
+    action,
+    expires_at: new Date(Date.now() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+async function insertTrashRows(admin: AdminClient, rows: ReturnType<typeof buildTrashRow>[]) {
+  if (rows.length === 0) return;
+  await admin.from("trash").insert(rows);
+}
+
+export async function getTrash(): Promise<TrashEntry[]> {
+  await assertAdmin();
+  const admin = createAdminClient();
+  // Opportunistically purge anything past its 15-day retention window.
+  await admin.from("trash").delete().lt("expires_at", new Date().toISOString());
+  const { data, error } = await admin
+    .from("trash")
+    .select("*")
+    .is("restored_at", null)
+    .order("deleted_at", { ascending: false });
+  if (error) return [];
+  return data as TrashEntry[];
+}
+
+async function restoreOne(admin: AdminClient, entry: TrashEntry): Promise<{ success: boolean; error?: string }> {
+  const { error: insertErr } = await admin.from(entry.table_name).insert(entry.data);
+  if (insertErr) return { success: false, error: insertErr.message };
+
+  const related = entry.related ?? {};
+  if (entry.table_name === "members" && related.attendance_ids?.length) {
+    await admin.from("attendance").update({ member_id: entry.record_id }).in("id", related.attendance_ids).is("member_id", null);
+  }
+  if (entry.table_name === "facilitators" && related.class_ids?.length) {
+    await admin.from("classes").update({ facilitator_id: entry.record_id }).in("id", related.class_ids).is("facilitator_id", null);
+  }
+  if (entry.table_name === "classes") {
+    if (related.member_ids?.length) {
+      await admin.from("members").update({ class_id: entry.record_id }).in("id", related.member_ids).is("class_id", null);
+    }
+    if (related.attendance_ids?.length) {
+      await admin.from("attendance").update({ class_id: entry.record_id }).in("id", related.attendance_ids).is("class_id", null);
+    }
+  }
+
+  await admin.from("trash").update({ restored_at: new Date().toISOString() }).eq("id", entry.id);
+  return { success: true };
+}
+
+export async function restoreTrashItem(trashId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const user = await assertAdmin();
+    const admin = createAdminClient();
+    const { data: entry, error: fetchErr } = await admin.from("trash").select("*").eq("id", trashId).maybeSingle();
+    if (fetchErr || !entry) return { success: false, error: "Trash entry not found." };
+    if (entry.restored_at) return { success: false, error: "Already restored." };
+
+    const result = await restoreOne(admin, entry as TrashEntry);
+    if (result.success) {
+      await logAdminAction(user.email, "restore_from_trash", { table_name: entry.table_name, record_id: entry.record_id });
+    }
+    return result;
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function restoreTrashBatch(batchId: string): Promise<{ success: boolean; error?: string; restored?: number }> {
+  try {
+    const user = await assertAdmin();
+    const admin = createAdminClient();
+    const { data: entries, error } = await admin.from("trash").select("*").eq("batch_id", batchId).is("restored_at", null);
+    if (error) return { success: false, error: error.message };
+
+    // Restore parents (facilitators/classes/members) before attendance rows that reference them.
+    const priority: Record<string, number> = { facilitators: 0, classes: 1, members: 2, attendance: 3 };
+    const sorted = (entries ?? []).slice().sort((a: any, b: any) => (priority[a.table_name] ?? 9) - (priority[b.table_name] ?? 9));
+
+    let restored = 0;
+    for (const entry of sorted) {
+      const result = await restoreOne(admin, entry as TrashEntry);
+      if (result.success) restored++;
+    }
+    await logAdminAction(user.email, "restore_batch_from_trash", { batch_id: batchId, restored });
+    return { success: true, restored };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
 }
 
 export async function updateMember(
@@ -72,12 +197,23 @@ export async function deleteMember(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await assertAdmin();
+    const user = await assertAdmin();
     const admin = createAdminClient();
+    const { data: member, error: fetchErr } = await admin.from("members").select("*").eq("id", id).maybeSingle();
+    if (fetchErr || !member) return { success: false, error: fetchErr?.message ?? "Member not found." };
+    const { data: attRows } = await admin.from("attendance").select("id").eq("member_id", id);
+    const attendanceIds = (attRows ?? []).map((r: any) => r.id);
+
     // Preserve attendance history but unlink from deleted member
     await admin.from("attendance").update({ member_id: null }).eq("member_id", id);
     const { error } = await admin.from("members").delete().eq("id", id);
     if (error) return { success: false, error: error.message };
+
+    const batchId = randomUUID();
+    await insertTrashRows(admin, [buildTrashRow(batchId, "members", id, member, { attendance_ids: attendanceIds }, user.email, "delete_member")]);
+    await logAdminAction(user.email, "delete_member", {
+      member_id: id, name: `${member.first_name} ${member.last_name}`, attendance_affected: attendanceIds.length,
+    });
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -90,13 +226,21 @@ export async function deleteClass(
   try {
     const user = await assertAdmin();
     const admin = createAdminClient();
-    const { data: cls } = await admin.from("classes").select("name, slot").eq("id", id).maybeSingle();
-    const { count: memberCount } = await admin.from("members").select("*", { count: "exact", head: true }).eq("class_id", id);
+    const { data: cls, error: fetchErr } = await admin.from("classes").select("*").eq("id", id).maybeSingle();
+    if (fetchErr || !cls) return { success: false, error: fetchErr?.message ?? "Class not found." };
+    const { data: memberRows } = await admin.from("members").select("id").eq("class_id", id);
+    const { data: attRows } = await admin.from("attendance").select("id").eq("class_id", id);
+    const memberIds = (memberRows ?? []).map((r: any) => r.id);
+    const attendanceIds = (attRows ?? []).map((r: any) => r.id);
+
     await admin.from("members").update({ class_id: null }).eq("class_id", id);
     const { error } = await admin.from("classes").delete().eq("id", id);
     if (error) return { success: false, error: error.message };
+
+    const batchId = randomUUID();
+    await insertTrashRows(admin, [buildTrashRow(batchId, "classes", id, cls, { member_ids: memberIds, attendance_ids: attendanceIds }, user.email, "delete_class")]);
     await logAdminAction(user.email, "delete_class", {
-      class_id: id, class_name: cls?.name ?? null, slot: cls?.slot ?? null, members_unassigned: memberCount ?? 0,
+      class_id: id, class_name: cls.name, slot: cls.slot, members_unassigned: memberIds.length,
     });
     return { success: true };
   } catch (err: any) {
@@ -111,13 +255,26 @@ export async function bulkDeleteClasses(
   try {
     const user = await assertAdmin();
     const admin = createAdminClient();
-    const { data: classesInfo } = await admin.from("classes").select("id, name, slot").in("id", ids);
-    const { count: memberCount } = await admin.from("members").select("*", { count: "exact", head: true }).in("class_id", ids);
+    const { data: classesInfo } = await admin.from("classes").select("*").in("id", ids);
+    const batchId = randomUUID();
+    const trashRows: ReturnType<typeof buildTrashRow>[] = [];
+    let totalMembers = 0;
+
+    for (const cls of classesInfo ?? []) {
+      const { data: memberRows } = await admin.from("members").select("id").eq("class_id", cls.id);
+      const { data: attRows } = await admin.from("attendance").select("id").eq("class_id", cls.id);
+      const memberIds = (memberRows ?? []).map((r: any) => r.id);
+      totalMembers += memberIds.length;
+      trashRows.push(buildTrashRow(batchId, "classes", cls.id, cls, { member_ids: memberIds, attendance_ids: (attRows ?? []).map((r: any) => r.id) }, user.email, "bulk_delete_classes"));
+    }
+
     await admin.from("members").update({ class_id: null }).in("class_id", ids);
     const { error } = await admin.from("classes").delete().in("id", ids);
     if (error) return { success: false, error: error.message };
+
+    await insertTrashRows(admin, trashRows);
     await logAdminAction(user.email, "bulk_delete_classes", {
-      classes: classesInfo ?? [], members_unassigned: memberCount ?? 0,
+      classes: (classesInfo ?? []).map((c: any) => ({ id: c.id, name: c.name, slot: c.slot })), members_unassigned: totalMembers,
     });
     return { success: true };
   } catch (err: any) {
@@ -129,11 +286,22 @@ export async function deleteFacilitator(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await assertAdmin();
+    const user = await assertAdmin();
     const admin = createAdminClient();
+    const { data: fac, error: fetchErr } = await admin.from("facilitators").select("*").eq("id", id).maybeSingle();
+    if (fetchErr || !fac) return { success: false, error: fetchErr?.message ?? "Facilitator not found." };
+    const { data: classRows } = await admin.from("classes").select("id").eq("facilitator_id", id);
+    const classIds = (classRows ?? []).map((r: any) => r.id);
+
     await admin.from("classes").update({ facilitator_id: null }).eq("facilitator_id", id);
     const { error } = await admin.from("facilitators").delete().eq("id", id);
     if (error) return { success: false, error: error.message };
+
+    const batchId = randomUUID();
+    await insertTrashRows(admin, [buildTrashRow(batchId, "facilitators", id, fac, { class_ids: classIds }, user.email, "delete_facilitator")]);
+    await logAdminAction(user.email, "delete_facilitator", {
+      facilitator_id: id, full_name: fac.full_name, classes_unassigned: classIds.length,
+    });
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -145,11 +313,28 @@ export async function bulkDeleteFacilitators(
 ): Promise<{ success: boolean; error?: string }> {
   if (ids.length === 0) return { success: true };
   try {
-    await assertAdmin();
+    const user = await assertAdmin();
     const admin = createAdminClient();
+    const { data: facsInfo } = await admin.from("facilitators").select("*").in("id", ids);
+    const batchId = randomUUID();
+    const trashRows: ReturnType<typeof buildTrashRow>[] = [];
+    let totalClasses = 0;
+
+    for (const fac of facsInfo ?? []) {
+      const { data: classRows } = await admin.from("classes").select("id").eq("facilitator_id", fac.id);
+      const classIds = (classRows ?? []).map((r: any) => r.id);
+      totalClasses += classIds.length;
+      trashRows.push(buildTrashRow(batchId, "facilitators", fac.id, fac, { class_ids: classIds }, user.email, "bulk_delete_facilitators"));
+    }
+
     await admin.from("classes").update({ facilitator_id: null }).in("facilitator_id", ids);
     const { error } = await admin.from("facilitators").delete().in("id", ids);
     if (error) return { success: false, error: error.message };
+
+    await insertTrashRows(admin, trashRows);
+    await logAdminAction(user.email, "bulk_delete_facilitators", {
+      facilitators: (facsInfo ?? []).map((f: any) => ({ id: f.id, full_name: f.full_name })), classes_unassigned: totalClasses,
+    });
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -174,10 +359,17 @@ export async function updateAttendanceName(
 export async function deleteAttendanceRecord(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
-  await assertAdmin();
+  const user = await assertAdmin();
   const admin = createAdminClient();
+  const { data: record, error: fetchErr } = await admin.from("attendance").select("*").eq("id", id).maybeSingle();
+  if (fetchErr || !record) return { success: false, error: fetchErr?.message ?? "Record not found." };
   const { error } = await admin.from("attendance").delete().eq("id", id);
-  return error ? { success: false, error: error.message } : { success: true };
+  if (error) return { success: false, error: error.message };
+
+  const batchId = randomUUID();
+  await insertTrashRows(admin, [buildTrashRow(batchId, "attendance", id, record, null, user.email, "delete_attendance_record")]);
+  await logAdminAction(user.email, "delete_attendance_record", { attendance_id: id, member_name: record.member_name, attended_at: record.attended_at });
+  return { success: true };
 }
 
 function normName(s: string) {
@@ -209,29 +401,35 @@ export async function renameAttendancePerson(
 export async function deleteAttendancePerson(
   normKey: string
 ): Promise<{ success: boolean; error?: string }> {
-  await assertAdmin();
+  const user = await assertAdmin();
   const admin = createAdminClient();
   const { data, error: fetchErr } = await admin
     .from("attendance")
-    .select("id, member_name");
+    .select("*");
   if (fetchErr) return { success: false, error: fetchErr.message };
-  const ids = (data ?? [])
-    .filter((r: any) => normName(r.member_name) === normKey)
-    .map((r: any) => r.id);
-  if (ids.length === 0) return { success: true };
+  const rows = (data ?? []).filter((r: any) => normName(r.member_name) === normKey);
+  if (rows.length === 0) return { success: true };
+  const ids = rows.map((r: any) => r.id);
+
   const { error } = await admin
     .from("attendance")
     .delete()
     .in("id", ids);
-  return error ? { success: false, error: error.message } : { success: true };
+  if (error) return { success: false, error: error.message };
+
+  const batchId = randomUUID();
+  await insertTrashRows(admin, rows.map((row: any) => buildTrashRow(batchId, "attendance", row.id, row, null, user.email, "delete_attendance_person")));
+  await logAdminAction(user.email, "delete_attendance_person", { name: rows[0]?.member_name ?? normKey, records_deleted: rows.length });
+  return { success: true };
 }
 
 export async function eraseAllData(): Promise<{ success: boolean; error?: string }> {
   try {
     const user = await assertFullAdmin();
     const admin = createAdminClient();
-    const { count: memberCount } = await admin.from("members").select("*", { count: "exact", head: true });
-    const { count: attCount } = await admin.from("attendance").select("*", { count: "exact", head: true });
+    const { data: attRows } = await admin.from("attendance").select("*");
+    const { data: memberRows } = await admin.from("members").select("*");
+
     const { error: attErr } = await admin
       .from("attendance")
       .delete()
@@ -242,8 +440,15 @@ export async function eraseAllData(): Promise<{ success: boolean; error?: string
       .delete()
       .not("id", "is", null);
     if (memErr) return { success: false, error: `Members: ${memErr.message}` };
+
+    const batchId = randomUUID();
+    const trashRows = [
+      ...(memberRows ?? []).map((m: any) => buildTrashRow(batchId, "members", m.id, m, null, user.email, "erase_all_data")),
+      ...(attRows ?? []).map((a: any) => buildTrashRow(batchId, "attendance", a.id, a, null, user.email, "erase_all_data")),
+    ];
+    await insertTrashRows(admin, trashRows);
     await logAdminAction(user.email, "erase_all_data", {
-      members_deleted: memberCount ?? 0, attendance_deleted: attCount ?? 0,
+      members_deleted: (memberRows ?? []).length, attendance_deleted: (attRows ?? []).length,
     });
     return { success: true };
   } catch (err: any) {

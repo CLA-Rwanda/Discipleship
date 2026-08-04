@@ -1,19 +1,41 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { KeyRound, Eye, EyeOff, ShieldCheck, Skull, AlertTriangle, SlidersHorizontal, Save, Lock, Plus, Trash2, UserCheck, Calendar, ListChecks, ScrollText } from "lucide-react";
+import { KeyRound, Eye, EyeOff, ShieldCheck, Skull, AlertTriangle, SlidersHorizontal, Save, Lock, Plus, Trash2, UserCheck, Calendar, ListChecks, ScrollText, RotateCcw, Archive } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { SlotBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase";
 import { changeAdminPassword } from "@/actions/auth";
-import { eraseAllData, bulkDeleteClasses, getAuditLog, type AuditLogEntry } from "@/actions/admin";
+import {
+  eraseAllData, bulkDeleteClasses, getAuditLog, type AuditLogEntry,
+  getTrash, restoreTrashItem, restoreTrashBatch, type TrashEntry,
+} from "@/actions/admin";
 import { getAppSettings, updateAppSetting } from "@/actions/settings";
 import { getTimeLocks, getTimeLockEnabled, createTimeLock, updateTimeLock, deleteTimeLock } from "@/actions/time-lock";
 import { getMyRole } from "@/lib/assert-admin";
 import { type TimeLock, DAY_NAMES } from "@/lib/time-lock";
 
 interface ClassForDanger { id: string; name: string; slot: string; member_count: number }
+
+const TRASH_TABLE_LABELS: Record<string, string> = {
+  members: "Member", facilitators: "Facilitator", classes: "Class", attendance: "Attendance record",
+};
+
+function describeTrashItem(entry: TrashEntry): string {
+  const d = entry.data;
+  switch (entry.table_name) {
+    case "members":      return `${d.first_name} ${d.last_name}`;
+    case "facilitators": return d.full_name;
+    case "classes":      return `${d.name} (${d.slot})`;
+    case "attendance":   return `${d.member_name} — ${new Date(d.attended_at).toLocaleDateString("en-GB")}`;
+    default:             return entry.record_id;
+  }
+}
+
+function daysLeft(expiresAt: string): number {
+  return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+}
 
 interface SettingField {
   key: string;
@@ -82,6 +104,13 @@ export default function SettingsPage() {
   const [auditLog, setAuditLog]               = useState<AuditLogEntry[]>([]);
   const [auditLogLoading, setAuditLogLoading] = useState(false);
 
+  // Danger zone — recycle bin
+  const [trashItems, setTrashItems]       = useState<TrashEntry[]>([]);
+  const [trashLoading, setTrashLoading]   = useState(false);
+  const [restoringId, setRestoringId]     = useState<string | null>(null);
+  const [restoringBatch, setRestoringBatch] = useState<string | null>(null);
+  const [trashError, setTrashError]       = useState("");
+
   // Password
   const [form, setForm]         = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [pwError, setPwError]   = useState("");
@@ -100,6 +129,8 @@ export default function SettingsPage() {
       if (r?.isFullAdmin) {
         setAuditLogLoading(true);
         getAuditLog().then((log) => { setAuditLog(log); setAuditLogLoading(false); });
+        setTrashLoading(true);
+        getTrash().then((items) => { setTrashItems(items); setTrashLoading(false); });
       }
     });
     Promise.all([
@@ -222,6 +253,7 @@ export default function SettingsPage() {
       setDangerStep(0);
       setConfirmInput("");
       refreshAuditLog();
+      refreshTrash();
     }
     else setEraseError(result.error ?? "Something went wrong.");
   }
@@ -230,6 +262,36 @@ export default function SettingsPage() {
     setAuditLogLoading(true);
     getAuditLog().then((log) => { setAuditLog(log); setAuditLogLoading(false); });
   }
+
+  function refreshTrash() {
+    setTrashLoading(true);
+    getTrash().then((items) => { setTrashItems(items); setTrashLoading(false); });
+  }
+
+  async function handleRestoreItem(id: string) {
+    setRestoringId(id);
+    setTrashError("");
+    const result = await restoreTrashItem(id);
+    setRestoringId(null);
+    if (result.success) { refreshTrash(); refreshAuditLog(); }
+    else setTrashError(result.error ?? "Restore failed.");
+  }
+
+  async function handleRestoreBatch(batchId: string) {
+    setRestoringBatch(batchId);
+    setTrashError("");
+    const result = await restoreTrashBatch(batchId);
+    setRestoringBatch(null);
+    if (result.success) { refreshTrash(); refreshAuditLog(); }
+    else setTrashError(result.error ?? "Restore failed.");
+  }
+
+  const trashBatches = Object.values(
+    trashItems.reduce((acc: Record<string, TrashEntry[]>, item) => {
+      (acc[item.batch_id] ??= []).push(item);
+      return acc;
+    }, {})
+  );
 
   async function openClassDangerZone() {
     setClassDangerOpen(true);
@@ -266,6 +328,7 @@ export default function SettingsPage() {
       setSelectedClassIds(new Set());
       setClassDeleteConfirm(false);
       refreshAuditLog();
+      refreshTrash();
     } else {
       setClassDeleteError(result.error ?? "Something went wrong.");
     }
@@ -705,7 +768,7 @@ export default function SettingsPage() {
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
                 <p className="font-bold" style={{ color: "rgba(248,240,230,0.85)" }}>Erase All Member &amp; Attendance Data</p>
-                <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>Permanently deletes every registered member and all attendance records. Classes and facilitators are not affected.</p>
+                <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>Deletes every registered member and all attendance records (moved to the Recycle Bin below for 15 days first). Classes and facilitators are not affected.</p>
               </div>
               {!eraseSuccess && dangerStep === 0 && (
                 <button onClick={openDangerZone} className="shrink-0 px-4 py-2 rounded-lg font-bold text-sm transition-all"
@@ -731,7 +794,7 @@ export default function SettingsPage() {
                       <li><span className="font-bold" style={{ color: "#ff6b6b" }}>{eraseCounts.members.toLocaleString()} registered member{eraseCounts.members !== 1 ? "s" : ""}</span></li>
                       <li><span className="font-bold" style={{ color: "#ff6b6b" }}>{eraseCounts.attendance.toLocaleString()} attendance record{eraseCounts.attendance !== 1 ? "s" : ""}</span></li>
                     </ul>
-                    <p className="text-sm mt-2 font-bold" style={{ color: "#ff4444" }}>THIS CANNOT BE UNDONE. There is no backup.</p>
+                    <p className="text-sm mt-2 font-bold" style={{ color: "#ff4444" }}>Recoverable from the Recycle Bin below for 15 days — after that, it's gone for good.</p>
                   </div>
                 </div>
                 <div className="flex gap-3">
@@ -826,7 +889,7 @@ export default function SettingsPage() {
                     {classDeleteConfirm && (
                       <div className="flex flex-col gap-3 p-3 rounded-lg" style={{ background: "rgba(192,40,40,0.15)", border: "1px solid rgba(192,40,40,0.4)" }}>
                         <p className="text-sm font-bold" style={{ color: "#ff4444" }}>
-                          This permanently deletes {selectedClassIds.size} class{selectedClassIds.size !== 1 ? "es" : ""}. {affectedMemberCount} member{affectedMemberCount !== 1 ? "s" : ""} will be unassigned (not deleted). This cannot be undone.
+                          This deletes {selectedClassIds.size} class{selectedClassIds.size !== 1 ? "es" : ""}. {affectedMemberCount} member{affectedMemberCount !== 1 ? "s" : ""} will be unassigned (not deleted). Recoverable from the Recycle Bin below for 15 days.
                         </p>
                         <div className="flex gap-2">
                           <button onClick={() => setClassDeleteConfirm(false)} className="flex-1 py-2 rounded-lg text-sm font-bold" style={{ border: "1px solid rgba(255,255,255,0.15)", color: "rgba(248,240,230,0.6)" }}>Cancel</button>
@@ -843,6 +906,75 @@ export default function SettingsPage() {
                 )}
               </div>
             )}
+
+            <div style={{ borderTop: "1px solid rgba(192,40,40,0.25)" }} />
+
+            {/* Recycle Bin */}
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <p className="font-bold flex items-center gap-2" style={{ color: "rgba(248,240,230,0.85)" }}>
+                  <Archive size={15} style={{ color: "#ff4444" }} /> Recycle Bin
+                </p>
+                <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
+                  Deleted members, facilitators, classes, and attendance records land here for 15 days before being purged for good — restore anything, anytime before then.
+                </p>
+              </div>
+              {trashItems.length > 0 && (
+                <span className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold" style={{ background: "rgba(192,40,40,0.15)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.35)" }}>
+                  {trashItems.length} item{trashItems.length !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+
+            {trashLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="spinner" style={{ width: 20, height: 20, borderTopColor: "#ff4444", borderColor: "rgba(192,40,40,0.2)" }} />
+              </div>
+            ) : trashBatches.length === 0 ? (
+              <p className="text-sm text-center py-3" style={{ color: "rgba(248,240,230,0.3)" }}>Recycle bin is empty.</p>
+            ) : (
+              <div className="flex flex-col gap-3 max-h-80 overflow-y-auto pr-1">
+                {trashBatches.map((batch) => {
+                  const first = batch[0];
+                  return (
+                    <div key={first.batch_id} className="p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                        <div>
+                          <p className="text-xs font-bold" style={{ color: "rgba(248,240,230,0.7)" }}>
+                            {first.deleted_by ?? "Unknown admin"} · {new Date(first.deleted_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                          <p className="text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>
+                            Expires in {daysLeft(first.expires_at)} day{daysLeft(first.expires_at) !== 1 ? "s" : ""}
+                          </p>
+                        </div>
+                        {batch.length > 1 && (
+                          <button onClick={() => handleRestoreBatch(first.batch_id)} disabled={restoringBatch === first.batch_id}
+                            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-bold shrink-0"
+                            style={{ background: "rgba(200,212,0,0.12)", color: "#C8D400", border: "1px solid rgba(200,212,0,0.3)" }}>
+                            <RotateCcw size={12} /> {restoringBatch === first.batch_id ? "Restoring…" : `Restore all ${batch.length}`}
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        {batch.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between gap-3 px-2.5 py-1.5 rounded" style={{ background: "rgba(255,255,255,0.03)" }}>
+                            <span className="text-sm truncate" style={{ color: "rgba(248,240,230,0.8)" }}>
+                              <span className="text-xs font-bold mr-1.5" style={{ color: "rgba(248,240,230,0.4)" }}>{TRASH_TABLE_LABELS[item.table_name]}</span>
+                              {describeTrashItem(item)}
+                            </span>
+                            <button onClick={() => handleRestoreItem(item.id)} disabled={restoringId === item.id}
+                              className="text-xs px-2 py-1 rounded font-bold shrink-0" style={{ background: "rgba(200,212,0,0.12)", color: "#C8D400", border: "1px solid rgba(200,212,0,0.3)" }}>
+                              {restoringId === item.id ? "…" : "Restore"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {trashError && <p className="text-sm" style={{ color: "#ff6b6b" }}>{trashError}</p>}
 
             <div style={{ borderTop: "1px solid rgba(192,40,40,0.25)" }} />
 
