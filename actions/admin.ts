@@ -11,6 +11,31 @@ async function assertAdmin() {
   return user;
 }
 
+async function logAdminAction(actorEmail: string | null | undefined, action: string, details: unknown) {
+  const admin = createAdminClient();
+  await admin.from("admin_audit_log").insert({ actor_email: actorEmail ?? null, action, details });
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actor_email: string | null;
+  action: string;
+  details: unknown;
+  created_at: string;
+}
+
+export async function getAuditLog(limit = 50): Promise<AuditLogEntry[]> {
+  await assertAdmin();
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("admin_audit_log")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return data as AuditLogEntry[];
+}
+
 export async function updateMember(
   id: string,
   fields: {
@@ -63,11 +88,16 @@ export async function deleteClass(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await assertAdmin();
+    const user = await assertAdmin();
     const admin = createAdminClient();
+    const { data: cls } = await admin.from("classes").select("name, slot").eq("id", id).maybeSingle();
+    const { count: memberCount } = await admin.from("members").select("*", { count: "exact", head: true }).eq("class_id", id);
     await admin.from("members").update({ class_id: null }).eq("class_id", id);
     const { error } = await admin.from("classes").delete().eq("id", id);
     if (error) return { success: false, error: error.message };
+    await logAdminAction(user.email, "delete_class", {
+      class_id: id, class_name: cls?.name ?? null, slot: cls?.slot ?? null, members_unassigned: memberCount ?? 0,
+    });
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -79,11 +109,16 @@ export async function bulkDeleteClasses(
 ): Promise<{ success: boolean; error?: string }> {
   if (ids.length === 0) return { success: true };
   try {
-    await assertAdmin();
+    const user = await assertAdmin();
     const admin = createAdminClient();
+    const { data: classesInfo } = await admin.from("classes").select("id, name, slot").in("id", ids);
+    const { count: memberCount } = await admin.from("members").select("*", { count: "exact", head: true }).in("class_id", ids);
     await admin.from("members").update({ class_id: null }).in("class_id", ids);
     const { error } = await admin.from("classes").delete().in("id", ids);
     if (error) return { success: false, error: error.message };
+    await logAdminAction(user.email, "bulk_delete_classes", {
+      classes: classesInfo ?? [], members_unassigned: memberCount ?? 0,
+    });
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -193,8 +228,10 @@ export async function deleteAttendancePerson(
 
 export async function eraseAllData(): Promise<{ success: boolean; error?: string }> {
   try {
-    await assertFullAdmin();
+    const user = await assertFullAdmin();
     const admin = createAdminClient();
+    const { count: memberCount } = await admin.from("members").select("*", { count: "exact", head: true });
+    const { count: attCount } = await admin.from("attendance").select("*", { count: "exact", head: true });
     const { error: attErr } = await admin
       .from("attendance")
       .delete()
@@ -205,6 +242,9 @@ export async function eraseAllData(): Promise<{ success: boolean; error?: string
       .delete()
       .not("id", "is", null);
     if (memErr) return { success: false, error: `Members: ${memErr.message}` };
+    await logAdminAction(user.email, "erase_all_data", {
+      members_deleted: memberCount ?? 0, attendance_deleted: attCount ?? 0,
+    });
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };

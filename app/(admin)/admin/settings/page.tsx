@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { KeyRound, Eye, EyeOff, ShieldCheck, Skull, AlertTriangle, SlidersHorizontal, Save, Lock, Plus, Trash2, UserCheck, Calendar } from "lucide-react";
+import { KeyRound, Eye, EyeOff, ShieldCheck, Skull, AlertTriangle, SlidersHorizontal, Save, Lock, Plus, Trash2, UserCheck, Calendar, ListChecks, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { SlotBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase";
 import { changeAdminPassword } from "@/actions/auth";
-import { eraseAllData } from "@/actions/admin";
+import { eraseAllData, bulkDeleteClasses, getAuditLog, type AuditLogEntry } from "@/actions/admin";
 import { getAppSettings, updateAppSetting } from "@/actions/settings";
 import { getTimeLocks, getTimeLockEnabled, createTimeLock, updateTimeLock, deleteTimeLock } from "@/actions/time-lock";
 import { getMyRole } from "@/lib/assert-admin";
 import { type TimeLock, DAY_NAMES } from "@/lib/time-lock";
+
+interface ClassForDanger { id: string; name: string; slot: string; member_count: number }
 
 interface SettingField {
   key: string;
@@ -66,6 +69,19 @@ export default function SettingsPage() {
   const [eraseError, setEraseError]   = useState("");
   const [eraseSuccess, setEraseSuccess] = useState(false);
 
+  // Danger zone — delete classes
+  const [classDangerOpen, setClassDangerOpen]   = useState(false);
+  const [classList, setClassList]               = useState<ClassForDanger[]>([]);
+  const [classListLoading, setClassListLoading] = useState(false);
+  const [selectedClassIds, setSelectedClassIds] = useState<Set<string>>(new Set());
+  const [classDeleteConfirm, setClassDeleteConfirm] = useState(false);
+  const [classDeleting, setClassDeleting]       = useState(false);
+  const [classDeleteError, setClassDeleteError] = useState("");
+
+  // Danger zone — audit log
+  const [auditLog, setAuditLog]               = useState<AuditLogEntry[]>([]);
+  const [auditLogLoading, setAuditLogLoading] = useState(false);
+
   // Password
   const [form, setForm]         = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [pwError, setPwError]   = useState("");
@@ -81,6 +97,10 @@ export default function SettingsPage() {
     getMyRole().then((r) => {
       setIsSuperAdmin(r?.isFullAdmin ?? false);
       setCurrentUserEmail(r?.email ?? "");
+      if (r?.isFullAdmin) {
+        setAuditLogLoading(true);
+        getAuditLog().then((log) => { setAuditLog(log); setAuditLogLoading(false); });
+      }
     });
     Promise.all([
       getAppSettings(),
@@ -197,8 +217,77 @@ export default function SettingsPage() {
     setEraseError("");
     const result = await eraseAllData();
     setErasing(false);
-    if (result.success) { setEraseSuccess(true); setDangerStep(0); setConfirmInput(""); }
+    if (result.success) {
+      setEraseSuccess(true);
+      setDangerStep(0);
+      setConfirmInput("");
+      refreshAuditLog();
+    }
     else setEraseError(result.error ?? "Something went wrong.");
+  }
+
+  function refreshAuditLog() {
+    setAuditLogLoading(true);
+    getAuditLog().then((log) => { setAuditLog(log); setAuditLogLoading(false); });
+  }
+
+  async function openClassDangerZone() {
+    setClassDangerOpen(true);
+    setClassListLoading(true);
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("classes")
+      .select("id, name, slot, members(count)")
+      .eq("is_active", true)
+      .order("name");
+    setClassList((data ?? []).map((c: any) => ({ id: c.id, name: c.name, slot: c.slot, member_count: c.members?.[0]?.count ?? 0 })));
+    setClassListLoading(false);
+  }
+
+  function toggleClassSelect(id: string) {
+    setSelectedClassIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleClassSelectAll() {
+    setSelectedClassIds((prev) => (prev.size === classList.length ? new Set() : new Set(classList.map((c) => c.id))));
+  }
+
+  async function handleDeleteSelectedClasses() {
+    setClassDeleting(true);
+    setClassDeleteError("");
+    const result = await bulkDeleteClasses(Array.from(selectedClassIds));
+    setClassDeleting(false);
+    if (result.success) {
+      setClassList((prev) => prev.filter((c) => !selectedClassIds.has(c.id)));
+      setSelectedClassIds(new Set());
+      setClassDeleteConfirm(false);
+      refreshAuditLog();
+    } else {
+      setClassDeleteError(result.error ?? "Something went wrong.");
+    }
+  }
+
+  const affectedMemberCount = classList
+    .filter((c) => selectedClassIds.has(c.id))
+    .reduce((sum, c) => sum + c.member_count, 0);
+
+  function describeLogEntry(entry: AuditLogEntry): string {
+    const d = entry.details as any;
+    if (entry.action === "delete_class") {
+      return `Deleted "${d?.class_name ?? "a class"}" (${d?.slot ?? "?"}) — ${d?.members_unassigned ?? 0} member${d?.members_unassigned === 1 ? "" : "s"} unassigned`;
+    }
+    if (entry.action === "bulk_delete_classes") {
+      const names = (d?.classes ?? []).map((c: any) => c.name).join(", ");
+      return `Deleted ${d?.classes?.length ?? 0} classes (${names || "—"}) — ${d?.members_unassigned ?? 0} member${d?.members_unassigned === 1 ? "" : "s"} unassigned`;
+    }
+    if (entry.action === "erase_all_data") {
+      return `Erased all data — ${d?.members_deleted ?? 0} members, ${d?.attendance_deleted ?? 0} attendance records deleted`;
+    }
+    return entry.action;
   }
 
   async function handlePasswordSubmit(e: React.FormEvent) {
@@ -669,6 +758,119 @@ export default function SettingsPage() {
                     {erasing ? "Erasing…" : "⚠ Permanently Erase All Data"}
                   </button>
                 </div>
+              </div>
+            )}
+
+            <div style={{ borderTop: "1px solid rgba(192,40,40,0.25)" }} />
+
+            {/* Delete Classes */}
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <p className="font-bold" style={{ color: "rgba(248,240,230,0.85)" }}>Delete Classes</p>
+                <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
+                  Permanently deletes one or more classes. Members in a deleted class are <strong>unassigned, not deleted</strong> — they can be reassigned to another class afterward.
+                </p>
+              </div>
+              {!classDangerOpen && (
+                <button onClick={openClassDangerZone} className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all"
+                  style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(192,40,40,0.2)", color: "#ff4444", border: "1px solid rgba(192,40,40,0.5)" }}>
+                  <ListChecks size={15} /> Manage Classes
+                </button>
+              )}
+            </div>
+
+            {classDangerOpen && (
+              <div className="flex flex-col gap-3 p-4 rounded-xl" style={{ background: "rgba(192,40,40,0.1)", border: "1px solid rgba(192,40,40,0.35)" }}>
+                {classListLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <div className="spinner" style={{ width: 22, height: 22, borderTopColor: "#ff4444", borderColor: "rgba(192,40,40,0.2)" }} />
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" checked={classList.length > 0 && selectedClassIds.size === classList.length}
+                        onChange={toggleClassSelectAll} style={{ accentColor: "#ff4444", cursor: "pointer" }} />
+                      <span className="text-xs" style={{ color: "rgba(248,240,230,0.5)" }}>
+                        {selectedClassIds.size > 0 ? `${selectedClassIds.size} selected` : "Select all"}
+                      </span>
+                      <button onClick={() => { setClassDangerOpen(false); setSelectedClassIds(new Set()); setClassDeleteConfirm(false); setClassDeleteError(""); }}
+                        className="ml-auto text-xs px-2 py-1 rounded" style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto pr-1">
+                      {classList.length === 0 ? (
+                        <p className="text-sm text-center py-4" style={{ color: "rgba(248,240,230,0.35)" }}>No active classes.</p>
+                      ) : classList.map((c) => {
+                        const checked = selectedClassIds.has(c.id);
+                        return (
+                          <label key={c.id} className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all"
+                            style={{ background: checked ? "rgba(192,40,40,0.15)" : "rgba(255,255,255,0.03)", border: `1px solid ${checked ? "rgba(192,40,40,0.4)" : "rgba(255,255,255,0.06)"}` }}>
+                            <input type="checkbox" checked={checked} onChange={() => toggleClassSelect(c.id)} style={{ accentColor: "#ff4444", cursor: "pointer" }} />
+                            <span className="flex-1 text-sm font-semibold">{c.name}</span>
+                            <SlotBadge slot={c.slot} />
+                            <span className="text-xs shrink-0" style={{ color: "rgba(248,240,230,0.45)" }}>{c.member_count} member{c.member_count !== 1 ? "s" : ""}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {selectedClassIds.size > 0 && !classDeleteConfirm && (
+                      <button onClick={() => setClassDeleteConfirm(true)} className="self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                        style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
+                        <Trash2 size={12} /> Delete {selectedClassIds.size} class{selectedClassIds.size !== 1 ? "es" : ""}
+                      </button>
+                    )}
+
+                    {classDeleteConfirm && (
+                      <div className="flex flex-col gap-3 p-3 rounded-lg" style={{ background: "rgba(192,40,40,0.15)", border: "1px solid rgba(192,40,40,0.4)" }}>
+                        <p className="text-sm font-bold" style={{ color: "#ff4444" }}>
+                          This permanently deletes {selectedClassIds.size} class{selectedClassIds.size !== 1 ? "es" : ""}. {affectedMemberCount} member{affectedMemberCount !== 1 ? "s" : ""} will be unassigned (not deleted). This cannot be undone.
+                        </p>
+                        <div className="flex gap-2">
+                          <button onClick={() => setClassDeleteConfirm(false)} className="flex-1 py-2 rounded-lg text-sm font-bold" style={{ border: "1px solid rgba(255,255,255,0.15)", color: "rgba(248,240,230,0.6)" }}>Cancel</button>
+                          <button onClick={handleDeleteSelectedClasses} disabled={classDeleting} className="flex-1 py-2 rounded-lg text-sm font-bold"
+                            style={{ background: "#8b1a1a", color: "#fff", border: "1px solid rgba(192,40,40,0.5)" }}>
+                            {classDeleting ? "Deleting…" : "Yes, delete"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {classDeleteError && <p className="text-sm" style={{ color: "#ff6b6b" }}>{classDeleteError}</p>}
+                  </>
+                )}
+              </div>
+            )}
+
+            <div style={{ borderTop: "1px solid rgba(192,40,40,0.25)" }} />
+
+            {/* Recent Danger Zone Activity */}
+            <div>
+              <p className="font-bold flex items-center gap-2" style={{ color: "rgba(248,240,230,0.85)" }}>
+                <ScrollText size={15} style={{ color: "#ff4444" }} /> Recent Activity
+              </p>
+              <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
+                Who deleted or erased what, and when. Logged automatically for every Danger Zone action.
+              </p>
+            </div>
+            {auditLogLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="spinner" style={{ width: 20, height: 20, borderTopColor: "#ff4444", borderColor: "rgba(192,40,40,0.2)" }} />
+              </div>
+            ) : auditLog.length === 0 ? (
+              <p className="text-sm text-center py-3" style={{ color: "rgba(248,240,230,0.3)" }}>No Danger Zone actions recorded yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1">
+                {auditLog.map((entry) => (
+                  <div key={entry.id} className="px-3 py-2.5 rounded-lg text-sm" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <p style={{ color: "rgba(248,240,230,0.8)" }}>{describeLogEntry(entry)}</p>
+                    <p className="text-xs mt-1" style={{ color: "rgba(248,240,230,0.4)" }}>
+                      {entry.actor_email ?? "Unknown admin"} · {new Date(entry.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                ))}
               </div>
             )}
           </div>
