@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: dark;
   --cla-bg-dark: #1e0707;
   --cla-bg-card: #3c1212;
   --cla-burgundy: #581616;
@@ -199,6 +200,16 @@
   .cla-input.error {
     border-color: #c02828;
     box-shadow: 0 0 0 3px rgba(192, 40, 40, 0.18);
+  }
+
+  /* Native <select> popups ignore the translucent .cla-input background and
+     paint their own opaque panel — force it dark so options stay readable. */
+  select.cla-input {
+    color-scheme: dark;
+  }
+  select.cla-input option {
+    background: var(--cla-bg-card);
+    color: var(--cla-off-white);
   }
 
   /* Radio slot button */
