@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { Search, Download, ClipboardList, GraduationCap, Pencil, Trash2, Check, X, CalendarCheck } from "lucide-react";
+import { useState, useEffect, useMemo, Fragment } from "react";
+import { Search, Download, ClipboardList, GraduationCap, Pencil, Trash2, Check, X, CalendarCheck, ChevronRight } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import {
   updateAttendanceName,
@@ -33,15 +33,24 @@ interface ProgressRow {
   count: number;
 }
 
+interface RosterMember {
+  id: string;
+  first_name: string;
+  last_name: string;
+  other_name: string | null;
+}
+
 interface ClassRosterInfo {
   id: string;
   name: string;
   slot: string;
   facilitator_name: string | null;
   member_count: number;
+  members: RosterMember[];
 }
 
 interface SnapshotClassRow {
+  classId: string | null;
   name: string;
   slot: string;
   facilitator: string | null;
@@ -115,6 +124,7 @@ export default function AttendancePage() {
 
   // Snapshot tab state
   const [selectedDate, setSelectedDate] = useState<string>("all");
+  const [expandedSnapshotClasses, setExpandedSnapshotClasses] = useState<Set<string>>(new Set());
 
   // Log tab state
   const [logSearch, setLogSearch] = useState("");
@@ -139,7 +149,7 @@ export default function AttendancePage() {
     Promise.all([
       getAllAttendanceForAdmin(),
       supabase.from("app_settings").select("key,value"),
-      supabase.from("classes").select("id, name, slot, facilitators(full_name), members(count)").eq("is_active", true),
+      supabase.from("classes").select("id, name, slot, facilitators(full_name), members(id, first_name, last_name, other_name)").eq("is_active", true),
     ]).then(([data, { data: settings }, { data: classData }]) => {
       setRows(data);
       if (settings) {
@@ -153,7 +163,8 @@ export default function AttendancePage() {
         name:             c.name,
         slot:             c.slot,
         facilitator_name: c.facilitators?.full_name ?? null,
-        member_count:     c.members?.[0]?.count ?? 0,
+        member_count:     (c.members ?? []).length,
+        members:          c.members ?? [],
       })));
       setLoading(false);
     });
@@ -173,27 +184,35 @@ export default function AttendancePage() {
   const snapshotStats = useMemo(() => {
     const uniqueSet = new Set(snapshotRows.map((r) => r.member_id ?? normName(r.member_name)));
     const bySlot: Record<string, number> = {};
-    const byClass = new Map<string, SnapshotClassRow>();
+    for (const r of snapshotRows) bySlot[r.service_slot] = (bySlot[r.service_slot] ?? 0) + 1;
+
+    // Every active class shows up (even with 0 check-ins that day) so absentees are visible too.
+    const classes: SnapshotClassRow[] = classRoster.map((c) => ({
+      classId:    c.id,
+      name:       c.name,
+      slot:       c.slot,
+      facilitator: c.facilitator_name,
+      count:      snapshotRows.filter((r) => r.class_id === c.id).length,
+      rosterSize: c.member_count,
+    }));
+
+    // Fold in any check-ins that don't map to a known active class (unlinked or a since-deleted class).
+    const knownIds = new Set(classRoster.map((c) => c.id));
+    const strayByKey = new Map<string, SnapshotClassRow>();
     for (const r of snapshotRows) {
-      bySlot[r.service_slot] = (bySlot[r.service_slot] ?? 0) + 1;
-      const classKey = r.class_id ?? `unlinked:${r.class_name ?? "none"}`;
-      if (!byClass.has(classKey)) {
-        const roster = classRoster.find((c) => c.id === r.class_id);
-        byClass.set(classKey, {
-          name:       r.class_name ?? "Unassigned",
-          slot:       r.service_slot,
-          facilitator: r.facilitator_name,
-          count:      0,
-          rosterSize: roster?.member_count ?? 0,
-        });
+      if (r.class_id && knownIds.has(r.class_id)) continue;
+      const key = r.class_name ?? "Unassigned";
+      if (!strayByKey.has(key)) {
+        strayByKey.set(key, { classId: null, name: key, slot: r.service_slot, facilitator: r.facilitator_name, count: 0, rosterSize: 0 });
       }
-      byClass.get(classKey)!.count++;
+      strayByKey.get(key)!.count++;
     }
+
     return {
       total: snapshotRows.length,
       unique: uniqueSet.size,
       bySlot,
-      classes: Array.from(byClass.values()).sort((a, b) => b.count - a.count),
+      classes: [...classes, ...Array.from(strayByKey.values())].sort((a, b) => b.count - a.count),
     };
   }, [snapshotRows, classRoster]);
 
@@ -205,6 +224,22 @@ export default function AttendancePage() {
     const total = rows.filter((r) => dateKeyOf(r.attended_at) === prevDate).length;
     return { date: prevDate, total };
   }, [selectedDate, availableDates, rows]);
+
+  function toggleSnapshotClass(key: string) {
+    setExpandedSnapshotClasses((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  function memberAttendanceOnDate(classId: string | null, memberId: string, date: string): AttendanceRow | null {
+    return rows.find((r) => r.class_id === classId && r.member_id === memberId && dateKeyOf(r.attended_at) === date) ?? null;
+  }
+
+  function memberAttendanceCount(classId: string | null, memberId: string): number {
+    return rows.filter((r) => r.class_id === classId && r.member_id === memberId).length;
+  }
 
   // ── Log tab ────────────────────────────────────────────────────────────────
   const filteredLog = rows.filter((r) => {
@@ -411,26 +446,96 @@ export default function AttendancePage() {
                         <tbody>
                           {snapshotStats.classes.map((c) => {
                             const pct = c.rosterSize > 0 ? Math.round((c.count / c.rosterSize) * 100) : null;
+                            const key = c.classId ?? c.name;
+                            const isExpanded = expandedSnapshotClasses.has(key);
+                            const rosterMembers = classRoster.find((cr) => cr.id === c.classId)?.members ?? [];
                             return (
-                              <tr key={`${c.name}-${c.slot}`}>
-                                <td className="font-semibold">{c.name}</td>
-                                <td style={{ color: "rgba(248,240,230,0.6)" }}>{c.facilitator ?? <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>}</td>
-                                <td><SlotBadge slot={c.slot as any} /></td>
-                                <td className="font-bold">
-                                  {c.count}
-                                  {c.rosterSize > 0 && <span style={{ color: "rgba(248,240,230,0.4)", fontWeight: 400 }}> /{c.rosterSize}</span>}
-                                </td>
-                                <td>
-                                  {pct !== null ? (
-                                    <div className="flex items-center gap-2">
-                                      <div className="rounded-full overflow-hidden" style={{ width: 80, height: 6, background: "rgba(255,255,255,0.07)" }}>
-                                        <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: pct >= 75 ? "linear-gradient(90deg,#a8c000,#C8D400)" : "linear-gradient(90deg,#E89A10,#F8BA18)" }} />
+                              <Fragment key={key}>
+                                <tr>
+                                  <td className="font-semibold">
+                                    <button onClick={() => toggleSnapshotClass(key)} className="inline-flex items-center gap-1.5"
+                                      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit", color: "inherit" }}>
+                                      <ChevronRight size={14} style={{ color: "rgba(248,240,230,0.4)", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }} />
+                                      {c.name}
+                                    </button>
+                                  </td>
+                                  <td style={{ color: "rgba(248,240,230,0.6)" }}>{c.facilitator ?? <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>}</td>
+                                  <td><SlotBadge slot={c.slot as any} /></td>
+                                  <td className="font-bold">
+                                    {c.count}
+                                    {c.rosterSize > 0 && <span style={{ color: "rgba(248,240,230,0.4)", fontWeight: 400 }}> /{c.rosterSize}</span>}
+                                  </td>
+                                  <td>
+                                    {pct !== null ? (
+                                      <div className="flex items-center gap-2">
+                                        <div className="rounded-full overflow-hidden" style={{ width: 80, height: 6, background: "rgba(255,255,255,0.07)" }}>
+                                          <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: pct >= 75 ? "linear-gradient(90deg,#a8c000,#C8D400)" : "linear-gradient(90deg,#E89A10,#F8BA18)" }} />
+                                        </div>
+                                        <span className="text-xs" style={{ color: "rgba(248,240,230,0.5)" }}>{pct}%</span>
                                       </div>
-                                      <span className="text-xs" style={{ color: "rgba(248,240,230,0.5)" }}>{pct}%</span>
-                                    </div>
-                                  ) : <span style={{ color: "rgba(248,240,230,0.3)" }}>—</span>}
-                                </td>
-                              </tr>
+                                    ) : <span style={{ color: "rgba(248,240,230,0.3)" }}>—</span>}
+                                  </td>
+                                </tr>
+                                {isExpanded && (
+                                  <tr>
+                                    <td colSpan={5} style={{ background: "rgba(255,255,255,0.02)", padding: 0, borderTop: "1px solid rgba(228,148,12,0.1)" }}>
+                                      <div className="px-4 py-4">
+                                        {rosterMembers.length === 0 ? (
+                                          <p className="text-center py-4 text-sm" style={{ color: "rgba(248,240,230,0.4)" }}>No members in this class.</p>
+                                        ) : (
+                                          <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+                                            <div className="overflow-x-auto">
+                                              <table className="cla-table" style={{ minWidth: "420px" }}>
+                                                <thead>
+                                                  <tr><th>#</th><th>Name</th><th>{selectedDate === "all" ? "Attendance" : "Status"}</th></tr>
+                                                </thead>
+                                                <tbody>
+                                                  {rosterMembers.map((m, idx) => (
+                                                    <tr key={m.id}>
+                                                      <td className="text-sm" style={{ color: "rgba(248,240,230,0.35)" }}>{idx + 1}</td>
+                                                      <td className="font-semibold text-sm">
+                                                        {m.first_name} {m.last_name}
+                                                        {m.other_name && <span className="ml-1.5 font-normal text-xs" style={{ color: "rgba(248,240,230,0.45)" }}>({m.other_name})</span>}
+                                                      </td>
+                                                      {selectedDate === "all" ? (() => {
+                                                        const count = memberAttendanceCount(c.classId, m.id);
+                                                        const p = availableDates.length > 0 ? Math.round((count / availableDates.length) * 100) : 0;
+                                                        return (
+                                                          <td>
+                                                            <div className="flex items-center gap-2">
+                                                              <span className="text-sm font-bold" style={{ color: p >= 75 ? "#C8D400" : "var(--cla-amber)" }}>{count}/{availableDates.length}</span>
+                                                              <div className="rounded-full overflow-hidden" style={{ width: 60, height: 5, background: "rgba(255,255,255,0.07)" }}>
+                                                                <div className="h-full rounded-full" style={{ width: `${p}%`, background: p >= 75 ? "linear-gradient(90deg,#a8c000,#C8D400)" : "linear-gradient(90deg,#E89A10,#F8BA18)" }} />
+                                                              </div>
+                                                            </div>
+                                                          </td>
+                                                        );
+                                                      })() : (() => {
+                                                        const record = memberAttendanceOnDate(c.classId, m.id, selectedDate);
+                                                        return (
+                                                          <td>
+                                                            {record ? (
+                                                              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(200,212,0,0.12)", color: "#C8D400", border: "1px solid rgba(200,212,0,0.3)" }}>
+                                                                ✓ {new Date(record.attended_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                                                              </span>
+                                                            ) : (
+                                                              <span className="text-xs" style={{ color: "rgba(248,240,230,0.3)" }}>— Absent</span>
+                                                            )}
+                                                          </td>
+                                                        );
+                                                      })()}
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
                             );
                           })}
                         </tbody>
