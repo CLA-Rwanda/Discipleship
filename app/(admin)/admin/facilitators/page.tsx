@@ -8,10 +8,12 @@ import { Modal } from "@/components/ui/Modal";
 import { SlotBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase";
 import { deleteFacilitator, bulkDeleteFacilitators } from "@/actions/admin";
+import { downloadXLSX } from "@/lib/xlsx-export";
 import type { Facilitator } from "@/lib/types";
 
 interface FacilitatorWithClasses extends Facilitator {
   classes_count: number;
+  classes: { name: string; slot: string }[];
 }
 
 interface ClassOption {
@@ -116,14 +118,27 @@ export default function FacilitatorsPage() {
     const supabase = createClient();
     const { data } = await supabase
       .from("facilitators")
-      .select("*, classes(count)")
+      .select("*, classes(name, slot)")
       .order("full_name");
-    const enriched = (data ?? []).map((f: any) => ({ ...f, classes_count: f.classes?.[0]?.count ?? 0 }));
+    const enriched = (data ?? []).map((f: any) => ({ ...f, classes: f.classes ?? [], classes_count: f.classes?.length ?? 0 }));
     setFacilitators(enriched);
     setLoading(false);
   }, []);
 
   useEffect(() => { fetchFacilitators(); }, [fetchFacilitators]);
+
+  function exportFacilitatorsCSV() {
+    const rows = [
+      ["Facilitator", "Phone", "Email", "Class"],
+      ...facilitators.map((f) => [
+        f.full_name,
+        f.phone ?? "",
+        f.email ?? "",
+        f.classes.length > 0 ? f.classes.map((c) => `${c.name} (${c.slot})`).join(", ") : "Unassigned",
+      ]),
+    ];
+    downloadXLSX(rows, "cla-facilitators.xlsx");
+  }
 
   function openAdd()  { setEditTarget(null); setForm(EMPTY_FORM); setErrors({}); setModalOpen(true); }
   function openEdit(f: FacilitatorWithClasses) { setEditTarget(f); setForm({ full_name: f.full_name, email: f.email ?? "", phone: f.phone ?? "" }); setErrors({}); setModalOpen(true); }
@@ -380,6 +395,9 @@ export default function FacilitatorsPage() {
           <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.5)" }}>{facilitators.length} facilitators</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          <Button variant="secondary" size="sm" onClick={exportFacilitatorsCSV}>
+            <Download size={15} /> Export CSV
+          </Button>
           {selectedIds.size > 0 && (
             bulkDeleteConfirm ? (
               <div className="flex items-center gap-2">
