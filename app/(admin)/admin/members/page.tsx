@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Download, Trash2, ArrowUpDown, Clock, CheckCircle, XCircle, ChevronRight, AlertTriangle, Edit2 } from "lucide-react";
+import { Search, Download, Trash2, ArrowUpDown, Clock, CheckCircle, XCircle, ChevronRight, AlertTriangle, Edit2, Plus, ChevronDown } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { createClient } from "@/lib/supabase";
-import { deleteMember, updateMember } from "@/actions/admin";
+import { deleteMember, updateMember, addMember } from "@/actions/admin";
 import {
   getPendingMembers,
   updatePendingStatus,
@@ -25,7 +25,16 @@ interface MemberWithClass extends Member {
   attendance_count: number;
 }
 
+interface ClassOption {
+  id: string;
+  name: string;
+  slot: string;
+  member_count: number;
+  capacity_max: number;
+}
+
 const BLANK_EDIT = { first_name: "", last_name: "", other_name: "", phone: "", email: "", preferred_slot: "8am" };
+const BLANK_ADD = { first_name: "", last_name: "", other_name: "", phone: "", email: "", class_id: "" };
 
 type Tab = "members" | "waitlist";
 
@@ -50,6 +59,14 @@ export default function MembersPage() {
   const [editErrors, setEditErrors]     = useState<{ first_name?: string; phone?: string }>({});
   const [saving, setSaving]             = useState(false);
 
+  // ── Add student state ──────────────────────────────────────
+  const [addOpen, setAddOpen]           = useState(false);
+  const [addForm, setAddForm]           = useState(BLANK_ADD);
+  const [addErrors, setAddErrors]       = useState<{ first_name?: string; phone?: string; class_id?: string; other_name?: string }>({});
+  const [addSaving, setAddSaving]       = useState(false);
+  const [addNameConflict, setAddNameConflict] = useState(false);
+  const [classOptions, setClassOptions] = useState<ClassOption[]>([]);
+
   // ── Waitlist state ────────────────────────────────────────
   const [pending, setPending]           = useState<PendingMember[]>([]);
   const [pendingLoading, setPendingLoading] = useState(true);
@@ -61,31 +78,46 @@ export default function MembersPage() {
   const [confirmClearWaitlist, setConfirmClearWaitlist] = useState(false);
 
   // ── Load members ──────────────────────────────────────────
-  useEffect(() => {
+  const loadMembers = useCallback(async () => {
     const supabase = createClient();
-    Promise.all([
+    const [{ data: memberData }, { data: attData }, { data: settingsData }] = await Promise.all([
       supabase.from("members").select("*, classes(name, facilitators(full_name))").order("registered_at", { ascending: false }),
       supabase.from("attendance").select("member_id").not("member_id", "is", null),
       supabase.from("app_settings").select("key, value"),
-    ]).then(([{ data: memberData }, { data: attData }, { data: settingsData }]) => {
-      const settingsMap: Record<string, string> = {};
-      for (const row of settingsData ?? []) settingsMap[row.key] = row.value;
-      const totalSessions = parseInt(settingsMap.total_sessions) || 21;
-      const thresholdPct  = parseInt(settingsMap.attendance_threshold_pct) || 75;
-      setGradThreshold(Math.ceil((totalSessions * thresholdPct) / 100));
+    ]);
+    const settingsMap: Record<string, string> = {};
+    for (const row of settingsData ?? []) settingsMap[row.key] = row.value;
+    const totalSessions = parseInt(settingsMap.total_sessions) || 21;
+    const thresholdPct  = parseInt(settingsMap.attendance_threshold_pct) || 75;
+    setGradThreshold(Math.ceil((totalSessions * thresholdPct) / 100));
 
-      const countById: Record<string, number> = {};
-      for (const r of attData ?? []) {
-        if (r.member_id) countById[r.member_id] = (countById[r.member_id] ?? 0) + 1;
-      }
-      setMembers((memberData ?? []).map((m: any) => ({
-        ...m,
-        class_name:       m.classes?.name,
-        facilitator_name: m.classes?.facilitators?.full_name,
-        attendance_count: countById[m.id] ?? 0,
-      })));
-      setMembersLoading(false);
-    });
+    const countById: Record<string, number> = {};
+    for (const r of attData ?? []) {
+      if (r.member_id) countById[r.member_id] = (countById[r.member_id] ?? 0) + 1;
+    }
+    setMembers((memberData ?? []).map((m: any) => ({
+      ...m,
+      class_name:       m.classes?.name,
+      facilitator_name: m.classes?.facilitators?.full_name,
+      attendance_count: countById[m.id] ?? 0,
+    })));
+    setMembersLoading(false);
+  }, []);
+
+  useEffect(() => { loadMembers(); }, [loadMembers]);
+
+  const loadClassOptions = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("classes")
+      .select("id, name, slot, capacity_max, members(count)")
+      .eq("is_active", true)
+      .order("name");
+    setClassOptions((data ?? []).map((c: any) => ({
+      id: c.id, name: c.name, slot: c.slot,
+      capacity_max: c.capacity_max,
+      member_count: c.members?.[0]?.count ?? 0,
+    })));
   }, []);
 
   // ── Load waitlist ─────────────────────────────────────────
@@ -151,6 +183,39 @@ export default function MembersPage() {
       setEditTarget(null);
     } else {
       setEditErrors({ phone: result.error });
+    }
+  }
+
+  function openAdd() {
+    setAddForm(BLANK_ADD);
+    setAddErrors({});
+    setAddNameConflict(false);
+    setAddOpen(true);
+    loadClassOptions();
+  }
+
+  async function handleAddStudent() {
+    const errors: typeof addErrors = {};
+    if (!addForm.first_name.trim()) errors.first_name = "First name is required.";
+    if (!addForm.phone.trim()) errors.phone = "Phone number is required.";
+    if (!addForm.class_id) errors.class_id = "Please select a class.";
+    if (addNameConflict && !addForm.other_name.trim()) errors.other_name = "Required — someone with this name already exists.";
+    if (Object.keys(errors).length) { setAddErrors(errors); return; }
+
+    setAddSaving(true);
+    const result = await addMember(addForm);
+    setAddSaving(false);
+
+    if (result.success) {
+      setAddOpen(false);
+      loadMembers();
+    } else if (result.error === "name_taken") {
+      setAddNameConflict(true);
+      setAddErrors({ other_name: "Someone with this name already exists. Add a middle name or nickname to continue." });
+    } else if (result.error === "already_registered") {
+      setAddErrors({ other_name: "Someone with this exact name and middle name already exists." });
+    } else {
+      setAddErrors({ phone: result.error });
     }
   }
 
@@ -229,13 +294,18 @@ export default function MembersPage() {
           </p>
         </div>
         {tab === "members" && (
-          <button
-            onClick={exportCSV}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all"
-            style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.1)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)" }}
-          >
-            <Download size={14} /> Export CSV
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="primary" size="sm" onClick={openAdd}>
+              <Plus size={16} /> Add Student
+            </Button>
+            <button
+              onClick={exportCSV}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all"
+              style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.1)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)" }}
+            >
+              <Download size={14} /> Export CSV
+            </button>
+          </div>
         )}
       </div>
 
@@ -537,6 +607,52 @@ export default function MembersPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* ── ADD STUDENT MODAL ───────────────────────────────── */}
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Student">
+        <div className="flex flex-col gap-4">
+          <p className="text-xs" style={{ color: "rgba(248,240,230,0.45)" }}>
+            Adds a member directly to a class, without going through the public registration form.
+          </p>
+          <div className="flex gap-3">
+            <Input label="First Name" value={addForm.first_name} error={addErrors.first_name}
+              onChange={(e) => { setAddForm((f) => ({ ...f, first_name: e.target.value })); setAddNameConflict(false); setAddErrors((e2) => ({ ...e2, other_name: undefined })); }} className="flex-1" />
+            <Input label="Last Name" value={addForm.last_name}
+              onChange={(e) => { setAddForm((f) => ({ ...f, last_name: e.target.value })); setAddNameConflict(false); setAddErrors((e2) => ({ ...e2, other_name: undefined })); }} className="flex-1" />
+          </div>
+          {(addNameConflict || addForm.other_name) && (
+            <Input
+              label={addNameConflict ? "Middle Name (required)" : "Middle Name (Optional)"}
+              placeholder="Middle name, nickname, etc."
+              value={addForm.other_name} error={addErrors.other_name}
+              onChange={(e) => setAddForm((f) => ({ ...f, other_name: e.target.value }))}
+            />
+          )}
+          <Input label="Phone" type="tel" value={addForm.phone} error={addErrors.phone}
+            onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value }))} />
+          <Input label="Email (Optional)" type="email" value={addForm.email}
+            onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))} />
+          <div>
+            <label className="text-sm font-bold block mb-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Class</label>
+            <div className="relative">
+              <select value={addForm.class_id} onChange={(e) => setAddForm((f) => ({ ...f, class_id: e.target.value }))} className="cla-input appearance-none pr-8">
+                <option value="">Select a class…</option>
+                {classOptions.map((c) => (
+                  <option key={c.id} value={c.id} disabled={c.member_count >= c.capacity_max}>
+                    {c.name} ({c.slot}) — {c.member_count}/{c.capacity_max}{c.member_count >= c.capacity_max ? " · FULL" : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(248,240,230,0.4)" }} />
+            </div>
+            {addErrors.class_id && <p className="text-xs mt-1.5" style={{ color: "#ff6b6b" }}>{addErrors.class_id}</p>}
+          </div>
+          <div className="flex gap-3 mt-2">
+            <Button variant="secondary" onClick={() => setAddOpen(false)} className="flex-1">Cancel</Button>
+            <Button variant="primary" loading={addSaving} onClick={handleAddStudent} className="flex-1">Add Student</Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

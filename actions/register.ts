@@ -117,6 +117,95 @@ export async function registerMember(formData: {
   return { success: false, error: "Something went wrong. Please try again." };
 }
 
+// ─── Temporary: baptism-class intake → Class 08 only ──────────────────────
+// No other registration is running until the next cohort, so this bypasses
+// the normal slot-based auto-assignment RPC entirely and places everyone
+// directly into the one reserved class. Remove/revert to registerMember +
+// the slot picker once the next cohort's general registration opens.
+
+const RESERVED_CLASS_NAME = "Class 08";
+const RESERVED_CLASS_SLOT = "8am";
+
+export async function registerToReservedClass(formData: {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email?: string;
+  other_name?: string;
+}): Promise<RegistrationResult> {
+  const isOpen = await getRegistrationOpen();
+  if (!isOpen) {
+    return { success: false, error: "registration_closed" };
+  }
+
+  const admin = createAdminClient();
+  const fn = formData.first_name.trim();
+  const ln = formData.last_name.trim();
+  const on = (formData.other_name ?? "").trim();
+
+  // Same duplicate-name protection as normal registration
+  const { data: nameMatches } = await admin
+    .from("members")
+    .select("id, other_name")
+    .ilike("first_name", fn)
+    .ilike("last_name", ln);
+
+  if (nameMatches && nameMatches.length > 0) {
+    if (!on) {
+      return { success: false, error: "name_taken" };
+    }
+    const exactDup = nameMatches.some(
+      (m) => (m.other_name ?? "").toLowerCase() === on.toLowerCase()
+    );
+    if (exactDup) {
+      return { success: false, error: "already_registered" };
+    }
+  }
+
+  const { data: cls } = await admin
+    .from("classes")
+    .select("id, name, slot, capacity_max, facilitators(full_name)")
+    .eq("name", RESERVED_CLASS_NAME)
+    .eq("slot", RESERVED_CLASS_SLOT)
+    .maybeSingle();
+
+  if (!cls) {
+    return { success: false, error: "The intake class could not be found. Please contact an administrator." };
+  }
+
+  const { count } = await admin
+    .from("members")
+    .select("*", { count: "exact", head: true })
+    .eq("class_id", cls.id);
+
+  if ((count ?? 0) >= cls.capacity_max) {
+    return { success: false, error: "This class is now full. Please contact an administrator." };
+  }
+
+  const { error } = await admin.from("members").insert({
+    first_name:     fn,
+    last_name:      ln,
+    other_name:     on || null,
+    phone:          formData.phone.trim(),
+    email:          formData.email?.trim() || null,
+    preferred_slot: cls.slot,
+    class_id:       cls.id,
+  });
+
+  if (error) return { success: false, error: error.message };
+
+  return {
+    success: true,
+    member: {
+      first_name: fn,
+      last_name:  ln,
+      class_name: cls.name,
+      slot:       cls.slot,
+      facilitator_name: (cls as any).facilitators?.full_name,
+    },
+  };
+}
+
 export async function getSlotCapacities(): Promise<
   Array<{ slot: string; remaining: number; total: number }>
 > {

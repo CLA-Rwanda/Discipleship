@@ -86,7 +86,8 @@ export type AttendanceSubmitResult =
   | { success: true; slot: string; class_name: string; linked: boolean }
   | { success: false; error: string }
   | { needsSuggestion: true; suggestion: string; matchType: "reversed" }
-  | { needsOtherName: true };
+  | { needsOtherName: true }
+  | { alreadyMarked: true; slot: string; class_name: string; attended_at: string };
 
 async function recordAttendance(
   admin: ReturnType<typeof createAdminClient>,
@@ -95,6 +96,28 @@ async function recordAttendance(
   ln: string
 ): Promise<AttendanceSubmitResult> {
   const cls = member.classes;
+
+  // Same-day guard: one check-in per member per calendar day, regardless of
+  // which class it's under.
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const { data: existing } = await admin
+    .from("attendance")
+    .select("attended_at, classes(name, slot)")
+    .eq("member_id", member.id)
+    .gte("attended_at", `${todayKey}T00:00:00.000Z`)
+    .lte("attended_at", `${todayKey}T23:59:59.999Z`)
+    .maybeSingle();
+
+  if (existing) {
+    const existingCls = (existing as any).classes;
+    return {
+      alreadyMarked: true,
+      attended_at: existing.attended_at,
+      slot:         existingCls?.slot ?? cls.slot,
+      class_name:   existingCls?.name ?? cls.name,
+    };
+  }
+
   const on = (member.other_name ?? "").trim();
   const { error } = await admin.from("attendance").insert({
     member_name:  on ? `${fn} ${on} ${ln}` : `${fn} ${ln}`,

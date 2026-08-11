@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle, ClipboardList, AlertCircle, Lock } from "lucide-react";
+import { CheckCircle, ClipboardList, AlertCircle, Lock, Clock } from "lucide-react";
 import { CLALogo } from "@/components/ui/CLALogo";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -26,6 +26,7 @@ export default function AttendancePage() {
   const [loading, setLoading]         = useState(false);
   const [serverError, setServerError] = useState("");
   const [successData, setSuccessData] = useState<{ name: string; slot: string; class_name: string } | null>(null);
+  const [alreadyMarkedData, setAlreadyMarkedData] = useState<{ slot: string; class_name: string; attended_at: string } | null>(null);
   const [suggestion, setSuggestion]   = useState<{ text: string } | null>(null);
   const [timeLocked, setTimeLocked]   = useState(false);
   const [lockChecked, setLockChecked] = useState(false);
@@ -70,6 +71,7 @@ export default function AttendancePage() {
     setPrefillName(null);
     setSubmitted(false);
     setSuccessData(null);
+    setAlreadyMarkedData(null);
     setForm({ first_name: "", last_name: "", other_name: "" });
     setSuggestion(null);
     setNeedsOtherName(false);
@@ -106,6 +108,11 @@ export default function AttendancePage() {
 
     if ("needsOtherName" in result && result.needsOtherName) {
       setNeedsOtherName(true);
+      return;
+    }
+
+    if ("alreadyMarked" in result && result.alreadyMarked) {
+      setAlreadyMarkedData({ slot: result.slot, class_name: result.class_name, attended_at: result.attended_at });
       return;
     }
 
@@ -185,6 +192,43 @@ export default function AttendancePage() {
           </div>
           <Button variant="secondary" onClick={handleMarkAnother}>
             Mark Another Person
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── ALREADY MARKED ─────────────────────────────────────────
+  if (alreadyMarkedData) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center p-6 animate-fade-in" style={{ background: "var(--cla-bg-dark)" }}>
+        <div className="w-full max-w-sm flex flex-col items-center gap-6 text-center">
+          <CLALogo size="md" />
+          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.2)" }}>
+            <Clock size={30} style={{ color: "var(--cla-amber)" }} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>
+              Already Signed In
+            </h1>
+            <p style={{ color: "rgba(248,240,230,0.7)" }}>
+              You already marked attendance today, {form.first_name}. No need to do it again — God bless you!
+            </p>
+          </div>
+          <div className="w-full rounded-xl p-5 text-left flex flex-col gap-3" style={{ background: "rgba(228,148,12,0.08)", border: "1px solid rgba(228,148,12,0.25)" }}>
+            <div>
+              <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Class</p>
+              <p className="text-xl font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "var(--cla-amber-light)" }}>{alreadyMarkedData.class_name}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest mb-0.5" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Checked In At</p>
+              <p className="font-semibold">
+                {new Date(alreadyMarkedData.attended_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · {formatSlotLabel(alreadyMarkedData.slot)}
+              </p>
+            </div>
+          </div>
+          <Button variant="secondary" onClick={handleMarkAnother}>
+            Mark Someone Else
           </Button>
         </div>
       </div>

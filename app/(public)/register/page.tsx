@@ -1,21 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { CheckCircle, ChevronRight, Users, AlertCircle, Lock, Clock } from "lucide-react";
+import { CheckCircle, Users, AlertCircle, Lock, Clock } from "lucide-react";
 import { CLALogo } from "@/components/ui/CLALogo";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { SlotPicker } from "@/components/ui/SlotPicker";
-import { registerMember, getSlotCapacities, addToPendingList, getRegistrationOpen } from "@/actions/register";
+import { registerToReservedClass, addToPendingList, getRegistrationOpen } from "@/actions/register";
 import { checkPhoneDuplicate, type DuplicateCheckResult } from "@/actions/check-duplicate";
 
-type Step = "loading" | "closed" | "waitlist-form" | "waitlist-done" | "form" | "slot-conflict" | "success";
-
-interface SlotCap {
-  slot: string;
-  remaining: number;
-  total: number;
-}
+type Step = "loading" | "closed" | "waitlist-form" | "waitlist-done" | "form" | "success";
 
 function formatSlotLabel(slot: string): string {
   const labels: Record<string, string> = {
@@ -28,11 +21,10 @@ function formatSlotLabel(slot: string): string {
 export default function RegisterPage() {
   const [step, setStep]         = useState<Step>("loading");
   const [loading, setLoading]   = useState(false);
-  const [slotCaps, setSlotCaps] = useState<SlotCap[]>([]);
 
   const [form, setForm] = useState({
     first_name: "", last_name: "", other_name: "",
-    phone: "", email: "", preferred_slot: "",
+    phone: "", email: "",
   });
   const [nameConflict, setNameConflict] = useState(false);
   const [consent, setConsent]           = useState(false);
@@ -46,19 +38,13 @@ export default function RegisterPage() {
   const [successData, setSuccessData] = useState<{
     first_name: string; last_name: string; class_name: string; slot: string; facilitator_name?: string;
   } | null>(null);
-  const [altSlots, setAltSlots]       = useState<SlotCap[]>([]);
-  const [selectedAlt, setSelectedAlt] = useState<string>("");
-
   // Waitlist form
   const [wlForm, setWlForm]     = useState({ first_name: "", last_name: "", phone: "", email: "" });
   const [wlErrors, setWlErrors] = useState<Record<string, string>>({});
   const [wlLoading, setWlLoading] = useState(false);
 
   useEffect(() => {
-    Promise.all([getRegistrationOpen(), getSlotCapacities()]).then(([isOpen, caps]) => {
-      setSlotCaps(caps);
-      setStep(isOpen ? "form" : "closed");
-    });
+    getRegistrationOpen().then((isOpen) => setStep(isOpen ? "form" : "closed"));
   }, []);
 
   useEffect(() => {
@@ -79,7 +65,6 @@ export default function RegisterPage() {
     if (!form.first_name.trim())  e.first_name     = "First name is required";
     if (!form.last_name.trim())   e.last_name      = "Last name is required";
     if (!form.phone.trim())       e.phone          = "Phone number is required";
-    if (!form.preferred_slot)     e.preferred_slot = "Please select a service time";
     if (!consent)                 e.consent        = "You must agree to continue";
     if (nameConflict && !form.other_name.trim())
       e.other_name = "Required — someone with this name is already registered.";
@@ -93,13 +78,12 @@ export default function RegisterPage() {
     setLoading(true);
     setServerError("");
 
-    const result = await registerMember({
-      first_name:     form.first_name.trim(),
-      last_name:      form.last_name.trim(),
-      other_name:     form.other_name.trim() || undefined,
-      phone:          form.phone.trim(),
-      email:          form.email.trim() || undefined,
-      preferred_slot: form.preferred_slot,
+    const result = await registerToReservedClass({
+      first_name: form.first_name.trim(),
+      last_name:  form.last_name.trim(),
+      other_name: form.other_name.trim() || undefined,
+      phone:      form.phone.trim(),
+      email:      form.email.trim() || undefined,
     });
 
     setLoading(false);
@@ -114,29 +98,9 @@ export default function RegisterPage() {
       setServerError("You appear to already be registered. Please check with your facilitator.");
     } else if (result.error === "registration_closed") {
       setStep("closed");
-    } else if (result.error === "slot_full" && result.alternativeSlots) {
-      setAltSlots(result.alternativeSlots.filter((s) => s.remaining > 0));
-      setStep("slot-conflict");
     } else {
       setServerError(result.error ?? "Something went wrong. Please try again.");
     }
-  }
-
-  async function handleAltSubmit() {
-    if (!selectedAlt) return;
-    setLoading(true);
-    setServerError("");
-    const result = await registerMember({
-      first_name:     form.first_name.trim(),
-      last_name:      form.last_name.trim(),
-      other_name:     form.other_name.trim() || undefined,
-      phone:          form.phone.trim(),
-      email:          form.email.trim() || undefined,
-      preferred_slot: selectedAlt,
-    });
-    setLoading(false);
-    if (result.success && result.member) { setSuccessData(result.member); setStep("success"); }
-    else setServerError(result.error ?? "Something went wrong.");
   }
 
   function validateWaitlist() {
@@ -165,7 +129,7 @@ export default function RegisterPage() {
 
   function resetForm() {
     setStep("form");
-    setForm({ first_name: "", last_name: "", other_name: "", phone: "", email: "", preferred_slot: "" });
+    setForm({ first_name: "", last_name: "", other_name: "", phone: "", email: "" });
     setNameConflict(false);
     setConsent(false);
     setSuccessData(null);
@@ -328,39 +292,6 @@ export default function RegisterPage() {
     );
   }
 
-  // ── SLOT CONFLICT ────────────────────────────────────────────
-  if (step === "slot-conflict") {
-    return (
-      <div className="min-h-dvh flex flex-col items-center justify-center p-6" style={{ background: "var(--cla-bg-dark)" }}>
-        <div className="w-full max-w-sm flex flex-col gap-6">
-          <div className="flex flex-col items-center gap-4 text-center">
-            <CLALogo size="sm" />
-            <div>
-              <h1 className="text-2xl font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>That class time is fully booked</h1>
-              <p className="text-sm mt-1" style={{ color: "rgba(248,240,230,0.6)" }}>Choose an available time below for <span style={{ color: "var(--cla-amber)" }}>{form.first_name}</span></p>
-            </div>
-          </div>
-          <div className="cla-card p-5">
-            <p className="text-xs uppercase tracking-widest mb-3" style={{ fontFamily: "Barlow Condensed, sans-serif", color: "rgba(248,240,230,0.45)" }}>Available Class Times</p>
-            <SlotPicker
-              options={altSlots.map((s) => ({ value: s.slot, label: formatSlotLabel(s.slot), remaining: s.remaining, total: s.total }))}
-              value={selectedAlt} onChange={setSelectedAlt}
-            />
-            {serverError && (
-              <div className="mt-4 p-3 rounded-lg text-sm" style={{ background: "rgba(139,26,26,0.15)", border: "1px solid rgba(139,26,26,0.3)", color: "#ff6b6b" }}>{serverError}</div>
-            )}
-          </div>
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setStep("form")} className="flex-1">Back</Button>
-            <Button variant="primary" loading={loading} disabled={!selectedAlt} onClick={handleAltSubmit} className="flex-1">
-              Confirm <ChevronRight size={18} />
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // ── MAIN FORM ────────────────────────────────────────────────
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--cla-bg-dark)" }}>
@@ -372,7 +303,7 @@ export default function RegisterPage() {
               Join Our <span className="text-amber-gradient">Discipleship</span><br />Classes
             </h1>
             <p className="mt-1 text-sm" style={{ color: "rgba(248,240,230,0.6)" }}>
-              Hello there! We're excited to have you join our discipleship classes. Classes happen every Sunday, at 8:00 AM and 10:00 AM.<br />Please fill out the form below to register.
+              Hello there! We're excited to have you join our discipleship class. This intake meets every Sunday at 8:00 AM.<br />Please fill out the form below to register.
             </p>
           </div>
         </div>
@@ -437,14 +368,11 @@ export default function RegisterPage() {
               value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
           </div>
 
-          <div className="cla-card p-5 flex flex-col gap-4">
-            <h2 className="text-lg font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Preferred Class Time</h2>
-            <SlotPicker
-              options={slotCaps.map((s) => ({ value: s.slot, label: formatSlotLabel(s.slot), remaining: s.remaining, total: s.total }))}
-              value={form.preferred_slot}
-              onChange={(slot) => setForm((f) => ({ ...f, preferred_slot: slot }))}
-            />
-            {errors.preferred_slot && <p className="text-xs" style={{ color: "#ff6b6b" }}>{errors.preferred_slot}</p>}
+          <div className="cla-card p-4 flex items-center gap-3" style={{ background: "rgba(228,148,12,0.06)", border: "1px solid rgba(228,148,12,0.2)" }}>
+            <Users size={18} style={{ color: "var(--cla-amber)", flexShrink: 0 }} />
+            <p className="text-sm" style={{ color: "rgba(248,240,230,0.7)" }}>
+              You'll be placed in <strong style={{ color: "var(--cla-amber-light)" }}>Class 08</strong>, meeting at <strong style={{ color: "var(--cla-amber-light)" }}>8:00 AM</strong>.
+            </p>
           </div>
 
           {/* Consent */}

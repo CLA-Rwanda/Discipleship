@@ -161,6 +161,71 @@ export async function restoreTrashBatch(batchId: string): Promise<{ success: boo
   }
 }
 
+export async function addMember(fields: {
+  first_name: string;
+  last_name: string;
+  other_name?: string;
+  phone: string;
+  email?: string;
+  class_id: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    await assertAdmin();
+    const admin = createAdminClient();
+    const fn = fields.first_name.trim();
+    const ln = fields.last_name.trim();
+    const on = (fields.other_name ?? "").trim();
+
+    // Same duplicate-name protection used at public registration
+    const { data: nameMatches } = await admin
+      .from("members")
+      .select("id, other_name")
+      .ilike("first_name", fn)
+      .ilike("last_name", ln);
+
+    if (nameMatches && nameMatches.length > 0) {
+      if (!on) {
+        return { success: false, error: "name_taken" };
+      }
+      const exactDup = nameMatches.some(
+        (m) => (m.other_name ?? "").trim().toLowerCase() === on.toLowerCase()
+      );
+      if (exactDup) {
+        return { success: false, error: "already_registered" };
+      }
+    }
+
+    const { data: cls } = await admin
+      .from("classes")
+      .select("id, slot, capacity_max")
+      .eq("id", fields.class_id)
+      .maybeSingle();
+    if (!cls) return { success: false, error: "Class not found." };
+
+    const { count } = await admin
+      .from("members")
+      .select("*", { count: "exact", head: true })
+      .eq("class_id", cls.id);
+    if ((count ?? 0) >= cls.capacity_max) {
+      return { success: false, error: "That class is full." };
+    }
+
+    const { error } = await admin.from("members").insert({
+      first_name:     fn,
+      last_name:      ln,
+      other_name:     on || null,
+      phone:          fields.phone.trim(),
+      email:          fields.email?.trim() || null,
+      preferred_slot: cls.slot,
+      class_id:       cls.id,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export async function updateMember(
   id: string,
   fields: {
