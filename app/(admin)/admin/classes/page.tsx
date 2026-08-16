@@ -179,9 +179,11 @@ export default function ClassesPage() {
 
   async function handleMove() {
     if (!moveState || !targetClassId) return;
+    const targetClass = classes.find((c) => c.id === targetClassId);
+    if (!targetClass) return;
     setMovingId(moveState.member.id);
     const supabase = createClient();
-    await supabase.from("members").update({ class_id: targetClassId }).eq("id", moveState.member.id);
+    await supabase.from("members").update({ class_id: targetClassId, preferred_slot: targetClass.slot }).eq("id", moveState.member.id);
     setMovingId(null);
     setMoveState(null);
     setTargetClassId("");
@@ -192,11 +194,11 @@ export default function ClassesPage() {
     if (!swapState || !swapTargetClassId || !swapTargetMemberId) return;
     const targetClass = classes.find((c) => c.id === swapTargetClassId);
     const targetMember = targetClass?.members.find((m: any) => m.id === swapTargetMemberId);
-    if (!targetMember) return;
+    if (!targetClass || !targetMember) return;
     setSwapping(true);
     const supabase = createClient();
-    await supabase.from("members").update({ class_id: swapTargetClassId }).eq("id", swapState.member.id);
-    await supabase.from("members").update({ class_id: swapState.fromClass.id }).eq("id", targetMember.id);
+    await supabase.from("members").update({ class_id: swapTargetClassId, preferred_slot: targetClass.slot }).eq("id", swapState.member.id);
+    await supabase.from("members").update({ class_id: swapState.fromClass.id, preferred_slot: swapState.fromClass.slot }).eq("id", targetMember.id);
     setSwapping(false);
     setSwapState(null);
     setSwapTargetClassId("");
