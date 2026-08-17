@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Users, BookOpen, ClipboardList, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Users, BookOpen, ClipboardList, AlertTriangle, CheckCircle2, ChevronDown } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -18,7 +18,6 @@ interface DashboardStats {
   totalClasses: number;
   slotDistribution: { name: string; value: number }[];
   classFillData: { name: string; count: number; max: number }[];
-  attendanceTrend: { week: string; count: number }[];
 }
 
 const AMBER       = "#E89A10";
@@ -26,6 +25,15 @@ const AMBER_LIGHT = "#F8BA18";
 const YELLOW      = "#C8D400";
 const PURPLE      = "#5B2D8E";
 const PIE_COLORS  = [AMBER, YELLOW, PURPLE, "#4ade80", "#60a5fa"];
+const WEEK_OPTIONS = [4, 6, 8, 12, 16];
+
+function dateKeyOf(iso: string): string {
+  return new Date(iso).toISOString().slice(0, 10);
+}
+
+function formatDateShort(key: string): string {
+  return new Date(key + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
 
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -40,6 +48,8 @@ function CustomTooltip({ active, payload, label }: any) {
 export default function DashboardPage() {
   const [stats, setStats]   = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [attendanceDates, setAttendanceDates] = useState<string[]>([]);
+  const [weeksToShow, setWeeksToShow] = useState(4);
 
   useEffect(() => {
     async function fetchStats() {
@@ -52,7 +62,7 @@ export default function DashboardPage() {
         { count: attendanceThisWeek },
         { data: classes },
         { data: slotRaw },
-        { data: weeklyRaw },
+        { data: attendanceRaw },
         { data: membersWithAttendance },
         { data: settingsRaw },
       ] = await Promise.all([
@@ -60,7 +70,7 @@ export default function DashboardPage() {
         supabase.from("attendance").select("*", { count: "exact", head: true }).gte("attended_at", weekAgo.toISOString()),
         supabase.from("classes").select("id, name, slot, members(count)").eq("is_active", true).order("name"),
         supabase.from("members").select("preferred_slot"),
-        supabase.from("attendance").select("attended_at").gte("attended_at", new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString()),
+        supabase.from("attendance").select("attended_at"),
         supabase.from("attendance").select("member_id").not("member_id", "is", null),
         supabase.from("app_settings").select("key,value"),
       ]);
@@ -85,19 +95,7 @@ export default function DashboardPage() {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([slot, value]) => ({ name: slot.toUpperCase(), value }));
 
-      // Weekly attendance trend (last 4 weeks)
-      const weeklyBuckets: Record<string, number> = {};
-      for (let i = 3; i >= 0; i--) {
-        weeklyBuckets[`Week ${4 - i}`] = 0;
-      }
-      (weeklyRaw ?? []).forEach((r: any) => {
-        const diffWeeks = Math.floor((Date.now() - new Date(r.attended_at).getTime()) / (7 * 24 * 60 * 60 * 1000));
-        if (diffWeeks <= 3) {
-          const key = `Week ${4 - diffWeeks}`;
-          if (weeklyBuckets[key] !== undefined) weeklyBuckets[key]++;
-        }
-      });
-      const attendanceTrend = Object.entries(weeklyBuckets).map(([week, count]) => ({ week, count }));
+      setAttendanceDates((attendanceRaw ?? []).map((r: any) => r.attended_at as string));
 
       const attendedIds = new Set((membersWithAttendance ?? []).map((r: any) => r.member_id).filter(Boolean));
       const neverAttended = Math.max(0, (totalMembers ?? 0) - attendedIds.size);
@@ -111,12 +109,30 @@ export default function DashboardPage() {
         totalClasses: (classes ?? []).length,
         slotDistribution,
         classFillData,
-        attendanceTrend,
       });
       setLoading(false);
     }
     fetchStats();
   }, []);
+
+  const availableSessionCount = useMemo(
+    () => new Set(attendanceDates.map(dateKeyOf)).size,
+    [attendanceDates]
+  );
+
+  const attendanceTrend = useMemo(() => {
+    const byDate = new Map<string, number>();
+    for (const iso of attendanceDates) {
+      const key = dateKeyOf(iso);
+      byDate.set(key, (byDate.get(key) ?? 0) + 1);
+    }
+    const sortedDesc = Array.from(byDate.keys()).sort((a, b) => b.localeCompare(a));
+    const selected = sortedDesc.slice(0, weeksToShow).reverse(); // oldest → newest, left to right
+    return selected.map((date, idx) => ({
+      week:  `Week ${idx + 1} · ${formatDateShort(date)}`,
+      count: byDate.get(date) ?? 0,
+    }));
+  }, [attendanceDates, weeksToShow]);
 
   if (loading) {
     return (
@@ -144,16 +160,38 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="cla-card p-5">
-          <h2 className="text-lg font-bold mb-4" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Attendance Trend — Last 4 Weeks</h2>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={s.attendanceTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="week" stroke="rgba(248,240,230,0.3)" tick={{ fill: "rgba(248,240,230,0.5)", fontSize: 12 }} />
-              <YAxis stroke="rgba(248,240,230,0.3)" tick={{ fill: "rgba(248,240,230,0.5)", fontSize: 12 }} />
-              <Tooltip content={<CustomTooltip />} />
-              <Line type="monotone" dataKey="count" name="Attendance" stroke={AMBER_LIGHT} strokeWidth={2.5} dot={{ fill: AMBER, r: 4 }} activeDot={{ r: 6 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+            <h2 className="text-lg font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Attendance Trend</h2>
+            <div className="relative">
+              <select
+                value={weeksToShow}
+                onChange={(e) => setWeeksToShow(Number(e.target.value))}
+                className="cla-input appearance-none pr-7 text-sm"
+                style={{ width: "auto", minHeight: 34, padding: "6px 28px 6px 10px" }}
+              >
+                {WEEK_OPTIONS.map((n) => <option key={n} value={n}>Last {n} Sundays</option>)}
+              </select>
+              <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(248,240,230,0.4)" }} />
+            </div>
+          </div>
+          {availableSessionCount > 0 && availableSessionCount < weeksToShow && (
+            <p className="text-xs mb-3" style={{ color: "rgba(248,240,230,0.4)" }}>
+              Only {availableSessionCount} Sunday{availableSessionCount !== 1 ? "s" : ""} recorded so far — showing all of them.
+            </p>
+          )}
+          {attendanceTrend.length === 0 ? (
+            <p className="text-center py-16 text-sm" style={{ color: "rgba(248,240,230,0.4)" }}>No attendance recorded yet.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={attendanceTrend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="week" stroke="rgba(248,240,230,0.3)" tick={{ fill: "rgba(248,240,230,0.5)", fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={50} />
+                <YAxis stroke="rgba(248,240,230,0.3)" tick={{ fill: "rgba(248,240,230,0.5)", fontSize: 12 }} allowDecimals={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Line type="monotone" dataKey="count" name="Attendance" stroke={AMBER_LIGHT} strokeWidth={2.5} dot={{ fill: AMBER, r: 4 }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         <div className="cla-card p-5">
