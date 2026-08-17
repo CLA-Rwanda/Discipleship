@@ -78,14 +78,75 @@ function formatDateShort(key: string): string {
   return new Date(key + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
-function exportSnapshotCSV(classes: SnapshotClassRow[], label: string) {
-  downloadXLSX([
-    ["Class", "Facilitator", "Slot", "Attended", "Roster Size", "Turnout %"],
-    ...classes.map((c) => [
-      c.name, c.facilitator ?? "", c.slot, c.count,
-      c.rosterSize || "", c.rosterSize > 0 ? Math.round((c.count / c.rosterSize) * 100) : "",
-    ]),
-  ], `cla-attendance-snapshot-${label}.xlsx`);
+function memberDisplayName(m: RosterMember): string {
+  return m.other_name ? `${m.first_name} ${m.other_name} ${m.last_name}` : `${m.first_name} ${m.last_name}`;
+}
+
+// Per-student detail: for a single Sunday, who attended/was absent and when;
+// for All Time, one column per Sunday plus a running total — same shape as
+// what the expandable class rows already show on screen, just exportable.
+function exportSnapshotCSV(
+  classes: SnapshotClassRow[],
+  classRoster: ClassRosterInfo[],
+  rows: AttendanceRow[],
+  availableDates: string[],
+  selectedDate: string
+) {
+  if (selectedDate === "all") {
+    const header = ["Class", "Facilitator", "Slot", "Student", ...availableDates.map((d) => formatDateShort(d)), "Sessions Attended", "Total Sessions", "Turnout %"];
+    const dataRows: (string | number)[][] = [];
+
+    for (const c of classes) {
+      const roster = classRoster.find((cr) => cr.id === c.classId)?.members ?? [];
+      if (roster.length > 0) {
+        for (const m of roster) {
+          const memberRows = rows.filter((r) => r.class_id === c.classId && r.member_id === m.id);
+          const count = memberRows.length;
+          const pct = availableDates.length > 0 ? Math.round((count / availableDates.length) * 100) : 0;
+          const perDate = availableDates.map((d) => (memberRows.some((r) => dateKeyOf(r.attended_at) === d) ? "Yes" : "No"));
+          dataRows.push([c.name, c.facilitator ?? "", c.slot, memberDisplayName(m), ...perDate, count, availableDates.length, pct]);
+        }
+      } else if (c.classId === null) {
+        // Stray/unlinked check-ins with no fixed roster to compare against
+        const strayRows = rows.filter((r) => !r.class_id && (r.class_name ?? "Unassigned") === c.name);
+        const byName = new Map<string, AttendanceRow[]>();
+        for (const r of strayRows) {
+          if (!byName.has(r.member_name)) byName.set(r.member_name, []);
+          byName.get(r.member_name)!.push(r);
+        }
+        for (const [name, memberRows] of Array.from(byName.entries())) {
+          const count = memberRows.length;
+          const pct = availableDates.length > 0 ? Math.round((count / availableDates.length) * 100) : 0;
+          const perDate = availableDates.map((d) => (memberRows.some((r: AttendanceRow) => dateKeyOf(r.attended_at) === d) ? "Yes" : "No"));
+          dataRows.push([c.name, c.facilitator ?? "", c.slot, name, ...perDate, count, availableDates.length, pct]);
+        }
+      }
+    }
+    downloadXLSX([header, ...dataRows], "cla-attendance-snapshot-all-time.xlsx");
+  } else {
+    const header = ["Class", "Facilitator", "Slot", "Student", "Status", "Checked In At"];
+    const dataRows: (string | number)[][] = [];
+
+    for (const c of classes) {
+      const roster = classRoster.find((cr) => cr.id === c.classId)?.members ?? [];
+      if (roster.length > 0) {
+        for (const m of roster) {
+          const record = rows.find((r) => r.class_id === c.classId && r.member_id === m.id && dateKeyOf(r.attended_at) === selectedDate);
+          dataRows.push([
+            c.name, c.facilitator ?? "", c.slot, memberDisplayName(m),
+            record ? "Attended" : "Absent",
+            record ? new Date(record.attended_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "",
+          ]);
+        }
+      } else if (c.classId === null) {
+        const strayRows = rows.filter((r) => !r.class_id && (r.class_name ?? "Unassigned") === c.name && dateKeyOf(r.attended_at) === selectedDate);
+        for (const r of strayRows) {
+          dataRows.push([c.name, c.facilitator ?? "", c.slot, r.member_name, "Attended", new Date(r.attended_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })]);
+        }
+      }
+    }
+    downloadXLSX([header, ...dataRows], `cla-attendance-snapshot-${selectedDate}.xlsx`);
+  }
 }
 
 function exportLogCSV(rows: AttendanceRow[]) {
@@ -345,7 +406,7 @@ export default function AttendancePage() {
           onClick={() => {
             if (tab === "log") exportLogCSV(filteredLog);
             else if (tab === "progress") exportProgressCSV(filteredProgress, threshold);
-            else exportSnapshotCSV(snapshotStats.classes, selectedDate);
+            else exportSnapshotCSV(snapshotStats.classes, classRoster, rows, availableDates, selectedDate);
           }}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all"
           style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.1)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)" }}
