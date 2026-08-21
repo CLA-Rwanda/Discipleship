@@ -17,12 +17,14 @@ export function StatCard({
   sub,
   icon,
   accent,
+  onClick,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   icon?: React.ReactNode;
   accent?: "amber" | "green" | "red" | "purple";
+  onClick?: () => void;
 }) {
   const accents = {
     amber: "border-l-cla-amber",
@@ -34,6 +36,11 @@ export function StatCard({
   return (
     <div
       className={`stat-card border-l-4 ${accents[accent ?? "amber"]}`}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+      style={onClick ? { cursor: "pointer" } : undefined}
     >
       <div className="flex items-start justify-between gap-3">
         <div>

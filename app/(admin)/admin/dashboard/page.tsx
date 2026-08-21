@@ -1,23 +1,37 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Users, BookOpen, ClipboardList, AlertTriangle, CheckCircle2, ChevronDown } from "lucide-react";
+import { Users, BookOpen, ClipboardList, AlertTriangle, CheckCircle2, ChevronDown, Search, Download } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
 import { StatCard } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
+import { SlotBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase";
+import { downloadXLSX } from "@/lib/xlsx-export";
 
 interface DashboardStats {
   totalMembers: number;
-  neverAttended: number;
   attendanceThisWeek: number;
   classesAtCapacity: number;
   classesWithOpenSpots: number;
   totalClasses: number;
   slotDistribution: { name: string; value: number }[];
   classFillData: { name: string; count: number; max: number }[];
+}
+
+interface NeverAttendedMember {
+  id: string;
+  first_name: string;
+  last_name: string;
+  other_name?: string;
+  phone: string;
+  email?: string;
+  preferred_slot: string;
+  class_name?: string;
+  registered_at: string;
 }
 
 const AMBER       = "#E89A10";
@@ -35,6 +49,17 @@ function formatDateShort(key: string): string {
   return new Date(key + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
+function exportNeverAttendedCSV(members: NeverAttendedMember[]) {
+  downloadXLSX([
+    ["First Name", "Middle Name", "Last Name", "Phone", "Email", "Slot", "Class", "Registered"],
+    ...members.map((m) => [
+      m.first_name, m.other_name ?? "", m.last_name, m.phone, m.email ?? "",
+      m.preferred_slot, m.class_name ?? "",
+      new Date(m.registered_at).toLocaleDateString("en-GB"),
+    ]),
+  ], "cla-never-attended.xlsx");
+}
+
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -50,6 +75,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [attendanceDates, setAttendanceDates] = useState<string[]>([]);
   const [weeksToShow, setWeeksToShow] = useState(4);
+  const [neverAttendedMembers, setNeverAttendedMembers] = useState<NeverAttendedMember[]>([]);
+  const [neverAttendedOpen, setNeverAttendedOpen] = useState(false);
+  const [neverAttendedSearch, setNeverAttendedSearch] = useState("");
 
   useEffect(() => {
     async function fetchStats() {
@@ -65,6 +93,7 @@ export default function DashboardPage() {
         { data: attendanceRaw },
         { data: membersWithAttendance },
         { data: settingsRaw },
+        { data: allMembersRaw },
       ] = await Promise.all([
         supabase.from("members").select("*", { count: "exact", head: true }),
         supabase.from("attendance").select("*", { count: "exact", head: true }).gte("attended_at", weekAgo.toISOString()),
@@ -73,6 +102,7 @@ export default function DashboardPage() {
         supabase.from("attendance").select("attended_at"),
         supabase.from("attendance").select("member_id").not("member_id", "is", null),
         supabase.from("app_settings").select("key,value"),
+        supabase.from("members").select("id, first_name, last_name, other_name, phone, email, preferred_slot, registered_at, classes(name)"),
       ]);
 
       const settingsMap: Record<string, string> = {};
@@ -98,11 +128,24 @@ export default function DashboardPage() {
       setAttendanceDates((attendanceRaw ?? []).map((r: any) => r.attended_at as string));
 
       const attendedIds = new Set((membersWithAttendance ?? []).map((r: any) => r.member_id).filter(Boolean));
-      const neverAttended = Math.max(0, (totalMembers ?? 0) - attendedIds.size);
+      setNeverAttendedMembers(
+        (allMembersRaw ?? [])
+          .filter((m: any) => !attendedIds.has(m.id))
+          .map((m: any) => ({
+            id: m.id,
+            first_name: m.first_name,
+            last_name: m.last_name,
+            other_name: m.other_name ?? undefined,
+            phone: m.phone,
+            email: m.email ?? undefined,
+            preferred_slot: m.preferred_slot,
+            class_name: m.classes?.name,
+            registered_at: m.registered_at,
+          }))
+      );
 
       setStats({
         totalMembers: totalMembers ?? 0,
-        neverAttended,
         attendanceThisWeek: attendanceThisWeek ?? 0,
         classesAtCapacity,
         classesWithOpenSpots,
@@ -144,6 +187,13 @@ export default function DashboardPage() {
 
   const s = stats!;
 
+  const filteredNeverAttended = neverAttendedMembers.filter((m) => {
+    const q = neverAttendedSearch.toLowerCase();
+    if (q === "") return true;
+    const full = `${m.first_name} ${m.other_name ?? ""} ${m.last_name}`.toLowerCase();
+    return full.includes(q) || m.phone.includes(q) || (m.email ?? "").toLowerCase().includes(q);
+  });
+
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div>
@@ -153,7 +203,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Members" value={s.totalMembers} sub="registered" accent="amber" icon={<Users size={20} style={{ color: "var(--cla-amber)" }} />} />
-        <StatCard label="Never Attended" value={s.neverAttended} sub="need follow-up" accent="red" icon={<ClipboardList size={20} style={{ color: "#ff6b6b" }} />} />
+        <StatCard label="Never Attended" value={neverAttendedMembers.length} sub="need follow-up — click to view" accent="red" icon={<ClipboardList size={20} style={{ color: "#ff6b6b" }} />} onClick={() => setNeverAttendedOpen(true)} />
         <StatCard label="Classes Full" value={s.classesAtCapacity} sub={`of ${s.totalClasses} classes`} accent="amber" icon={<AlertTriangle size={20} style={{ color: "var(--cla-amber)" }} />} />
         <StatCard label="Open Classes" value={s.classesWithOpenSpots} sub="accepting members" accent="purple" icon={<CheckCircle2 size={20} style={{ color: "#b47fea" }} />} />
       </div>
@@ -227,6 +277,61 @@ export default function DashboardPage() {
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Never Attended Modal */}
+      <Modal open={neverAttendedOpen} onClose={() => { setNeverAttendedOpen(false); setNeverAttendedSearch(""); }} title={`Never Attended — ${neverAttendedMembers.length}`} maxWidth="720px">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm" style={{ color: "rgba(248,240,230,0.55)" }}>
+            Registered members with zero attendance records. Reach out before removing anyone.
+          </p>
+          <div className="flex gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "rgba(248,240,230,0.35)" }} />
+              <input type="text" placeholder="Search by name, phone, or email…" value={neverAttendedSearch}
+                onChange={(e) => setNeverAttendedSearch(e.target.value)} className="cla-input pl-9 text-sm" />
+            </div>
+            <button onClick={() => exportNeverAttendedCSV(filteredNeverAttended)} disabled={filteredNeverAttended.length === 0}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all shrink-0"
+              style={{ fontFamily: "Barlow Condensed, sans-serif", background: "rgba(228,148,12,0.1)", color: "var(--cla-amber)", border: "1px solid rgba(228,148,12,0.2)", opacity: filteredNeverAttended.length === 0 ? 0.5 : 1 }}>
+              <Download size={14} /> Export CSV
+            </button>
+          </div>
+
+          {filteredNeverAttended.length === 0 ? (
+            <p className="text-center py-12 text-sm" style={{ color: "rgba(248,240,230,0.4)" }}>
+              {neverAttendedMembers.length === 0 ? "Everyone has attended at least once. 🎉" : "No matches for that search."}
+            </p>
+          ) : (
+            <div className="rounded-xl overflow-hidden" style={{ background: "var(--cla-bg-card)", border: "1px solid rgba(228,148,12,0.15)" }}>
+              <div className="overflow-x-auto" style={{ maxHeight: 420, overflowY: "auto" }}>
+                <table className="cla-table" style={{ minWidth: "560px" }}>
+                  <thead>
+                    <tr><th>Name</th><th>Phone</th><th>Email</th><th>Slot</th><th>Class</th><th>Registered</th></tr>
+                  </thead>
+                  <tbody>
+                    {filteredNeverAttended.map((m) => (
+                      <tr key={m.id}>
+                        <td className="font-semibold">
+                          {m.first_name} {m.last_name}
+                          {m.other_name && <span className="ml-1.5 font-normal text-xs" style={{ color: "rgba(248,240,230,0.45)" }}>({m.other_name})</span>}
+                        </td>
+                        <td style={{ color: "rgba(248,240,230,0.7)" }}>{m.phone}</td>
+                        <td style={{ color: "rgba(248,240,230,0.55)" }}>{m.email ?? <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>}</td>
+                        <td><SlotBadge slot={m.preferred_slot} /></td>
+                        <td style={{ color: "rgba(248,240,230,0.7)" }}>{m.class_name ?? <span style={{ color: "rgba(248,240,230,0.3)" }}>Unassigned</span>}</td>
+                        <td className="text-sm" style={{ color: "rgba(248,240,230,0.5)" }}>{new Date(m.registered_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 py-3 text-xs" style={{ borderTop: "1px solid rgba(255,255,255,0.05)", color: "rgba(248,240,230,0.4)" }}>
+                Showing {filteredNeverAttended.length} of {neverAttendedMembers.length}
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

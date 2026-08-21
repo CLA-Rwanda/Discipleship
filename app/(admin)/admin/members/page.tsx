@@ -49,6 +49,7 @@ export default function MembersPage() {
   const [search, setSearch]             = useState("");
   const [filterSlot, setFilterSlot]     = useState<string>("all");
   const [sortMode, setSortMode]         = useState<"none" | "name" | "registered" | "attendance">("none");
+  const [neverAttendedOnly, setNeverAttendedOnly] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId]   = useState<string | null>(null);
   const [deleting, setDeleting]         = useState(false);
   const [gradThreshold, setGradThreshold] = useState(16);
@@ -137,7 +138,7 @@ export default function MembersPage() {
       const q = search.toLowerCase();
       const fullName = `${m.first_name} ${m.other_name ?? ""} ${m.last_name}`.toLowerCase();
       const matchSearch = q === "" || fullName.includes(q) || m.phone.includes(q) || (m.email ?? "").toLowerCase().includes(q);
-      return matchSearch && (filterSlot === "all" || m.preferred_slot === filterSlot);
+      return matchSearch && (filterSlot === "all" || m.preferred_slot === filterSlot) && (!neverAttendedOnly || m.attendance_count === 0);
     })
     .sort((a, b) => {
       if (sortMode === "attendance") return b.attendance_count - a.attendance_count;
@@ -229,7 +230,7 @@ export default function MembersPage() {
         new Date(m.registered_at).toLocaleDateString("en-GB"),
       ]),
     ];
-    downloadXLSX(rows, "cla-members.xlsx");
+    downloadXLSX(rows, neverAttendedOnly ? "cla-members-never-attended.xlsx" : "cla-members.xlsx");
   }
 
   // ── Waitlist helpers ──────────────────────────────────────
@@ -339,6 +340,10 @@ export default function MembersPage() {
                 {s === "all" ? "All Slots" : s.toUpperCase()}
               </button>
             ))}
+            <button onClick={() => setNeverAttendedOnly((v) => !v)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-bold transition-all"
+              style={{ minHeight: 44, fontFamily: "Barlow Condensed, sans-serif", background: neverAttendedOnly ? "rgba(192,40,40,0.25)" : "rgba(255,255,255,0.05)", color: neverAttendedOnly ? "#ff6b6b" : "rgba(248,240,230,0.6)", border: neverAttendedOnly ? "1px solid rgba(192,40,40,0.5)" : "1px solid rgba(228,148,12,0.2)" }}>
+              <AlertTriangle size={14} /> Never Attended Only
+            </button>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
