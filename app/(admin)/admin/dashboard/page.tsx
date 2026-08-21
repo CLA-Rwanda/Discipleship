@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Users, BookOpen, ClipboardList, AlertTriangle, CheckCircle2, ChevronDown, Search, Download } from "lucide-react";
+import { Users, BookOpen, ClipboardList, AlertTriangle, CheckCircle2, ChevronDown, Search, Download, Trash2 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -11,6 +11,7 @@ import { Modal } from "@/components/ui/Modal";
 import { SlotBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase";
 import { downloadXLSX } from "@/lib/xlsx-export";
+import { bulkDeleteMembers } from "@/actions/admin";
 
 interface DashboardStats {
   totalMembers: number;
@@ -78,6 +79,10 @@ export default function DashboardPage() {
   const [neverAttendedMembers, setNeverAttendedMembers] = useState<NeverAttendedMember[]>([]);
   const [neverAttendedOpen, setNeverAttendedOpen] = useState(false);
   const [neverAttendedSearch, setNeverAttendedSearch] = useState("");
+  const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteError, setBulkDeleteError] = useState("");
 
   useEffect(() => {
     async function fetchStats() {
@@ -194,6 +199,48 @@ export default function DashboardPage() {
     return full.includes(q) || m.phone.includes(q) || (m.email ?? "").toLowerCase().includes(q);
   });
 
+  function closeNeverAttendedModal() {
+    setNeverAttendedOpen(false);
+    setNeverAttendedSearch("");
+    setSelectedIds(new Set());
+    setBulkDeleteConfirm(false);
+    setBulkDeleteError("");
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    const visibleIds = filteredNeverAttended.map((m) => m.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) visibleIds.forEach((id) => next.delete(id));
+      else visibleIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  async function handleBulkDelete() {
+    setBulkDeleting(true);
+    setBulkDeleteError("");
+    const ids = Array.from(selectedIds);
+    const result = await bulkDeleteMembers(ids);
+    setBulkDeleting(false);
+    if (result.success) {
+      setNeverAttendedMembers((prev) => prev.filter((m) => !selectedIds.has(m.id)));
+      setSelectedIds(new Set());
+      setBulkDeleteConfirm(false);
+    } else {
+      setBulkDeleteError(result.error ?? "Something went wrong.");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div>
@@ -279,7 +326,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Never Attended Modal */}
-      <Modal open={neverAttendedOpen} onClose={() => { setNeverAttendedOpen(false); setNeverAttendedSearch(""); }} title={`Never Attended — ${neverAttendedMembers.length}`} maxWidth="720px">
+      <Modal open={neverAttendedOpen} onClose={closeNeverAttendedModal} title={`Never Attended — ${neverAttendedMembers.length}`} maxWidth="760px">
         <div className="flex flex-col gap-4">
           <p className="text-sm" style={{ color: "rgba(248,240,230,0.55)" }}>
             Registered members with zero attendance records. Reach out before removing anyone.
@@ -297,6 +344,46 @@ export default function DashboardPage() {
             </button>
           </div>
 
+          {/* Bulk selection bar */}
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl flex-wrap" style={{ background: "rgba(192,40,40,0.12)", border: "1px solid rgba(192,40,40,0.3)" }}>
+              <span className="text-sm font-bold" style={{ color: "#ff6b6b" }}>
+                {selectedIds.size} selected
+              </span>
+              <div className="ml-auto flex items-center gap-2 flex-wrap">
+                <button onClick={() => { setSelectedIds(new Set()); setBulkDeleteConfirm(false); }} className="text-xs px-3 py-1.5 rounded-lg"
+                  style={{ color: "rgba(248,240,230,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                  Cancel
+                </button>
+                {!bulkDeleteConfirm && (
+                  <button onClick={() => setBulkDeleteConfirm(true)} className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-bold"
+                    style={{ background: "rgba(192,40,40,0.25)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.4)" }}>
+                    <Trash2 size={12} /> Delete Selected
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {bulkDeleteConfirm && (
+            <div className="flex flex-col gap-3 p-4 rounded-xl" style={{ background: "rgba(192,40,40,0.15)", border: "2px solid rgba(192,40,40,0.5)" }}>
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={18} style={{ color: "#ff4444", flexShrink: 0, marginTop: 1 }} />
+                <p className="text-sm font-bold" style={{ color: "#ff4444" }}>
+                  This deletes {selectedIds.size} member{selectedIds.size !== 1 ? "s" : ""}. They'll be moved to the Recycle Bin (Settings → Danger Zone) and recoverable for 15 days — after that, gone for good.
+                </p>
+              </div>
+              {bulkDeleteError && <p className="text-xs" style={{ color: "#ff6b6b" }}>{bulkDeleteError}</p>}
+              <div className="flex gap-2">
+                <button onClick={() => setBulkDeleteConfirm(false)} className="flex-1 py-2 rounded-lg text-sm font-bold" style={{ border: "1px solid rgba(255,255,255,0.15)", color: "rgba(248,240,230,0.6)" }}>Cancel</button>
+                <button onClick={handleBulkDelete} disabled={bulkDeleting} className="flex-1 py-2 rounded-lg text-sm font-bold"
+                  style={{ background: "#8b1a1a", color: "#fff", border: "1px solid rgba(192,40,40,0.5)" }}>
+                  {bulkDeleting ? "Deleting…" : `Yes, delete ${selectedIds.size}`}
+                </button>
+              </div>
+            </div>
+          )}
+
           {filteredNeverAttended.length === 0 ? (
             <p className="text-center py-12 text-sm" style={{ color: "rgba(248,240,230,0.4)" }}>
               {neverAttendedMembers.length === 0 ? "Everyone has attended at least once. 🎉" : "No matches for that search."}
@@ -304,24 +391,40 @@ export default function DashboardPage() {
           ) : (
             <div className="rounded-xl overflow-hidden" style={{ background: "var(--cla-bg-card)", border: "1px solid rgba(228,148,12,0.15)" }}>
               <div className="overflow-x-auto" style={{ maxHeight: 420, overflowY: "auto" }}>
-                <table className="cla-table" style={{ minWidth: "560px" }}>
+                <table className="cla-table" style={{ minWidth: "600px" }}>
                   <thead>
-                    <tr><th>Name</th><th>Phone</th><th>Email</th><th>Slot</th><th>Class</th><th>Registered</th></tr>
+                    <tr>
+                      <th style={{ width: 36 }}>
+                        <input type="checkbox"
+                          checked={filteredNeverAttended.length > 0 && filteredNeverAttended.every((m) => selectedIds.has(m.id))}
+                          onChange={toggleSelectAll}
+                          style={{ accentColor: "var(--cla-amber)", cursor: "pointer" }}
+                        />
+                      </th>
+                      <th>Name</th><th>Phone</th><th>Email</th><th>Slot</th><th>Class</th><th>Registered</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    {filteredNeverAttended.map((m) => (
-                      <tr key={m.id}>
-                        <td className="font-semibold">
-                          {m.first_name} {m.last_name}
-                          {m.other_name && <span className="ml-1.5 font-normal text-xs" style={{ color: "rgba(248,240,230,0.45)" }}>({m.other_name})</span>}
-                        </td>
-                        <td style={{ color: "rgba(248,240,230,0.7)" }}>{m.phone}</td>
-                        <td style={{ color: "rgba(248,240,230,0.55)" }}>{m.email ?? <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>}</td>
-                        <td><SlotBadge slot={m.preferred_slot} /></td>
-                        <td style={{ color: "rgba(248,240,230,0.7)" }}>{m.class_name ?? <span style={{ color: "rgba(248,240,230,0.3)" }}>Unassigned</span>}</td>
-                        <td className="text-sm" style={{ color: "rgba(248,240,230,0.5)" }}>{new Date(m.registered_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</td>
-                      </tr>
-                    ))}
+                    {filteredNeverAttended.map((m) => {
+                      const isChecked = selectedIds.has(m.id);
+                      return (
+                        <tr key={m.id} style={isChecked ? { background: "rgba(192,40,40,0.06)" } : undefined}>
+                          <td>
+                            <input type="checkbox" checked={isChecked} onChange={() => toggleSelect(m.id)}
+                              style={{ accentColor: "var(--cla-amber)", cursor: "pointer" }} />
+                          </td>
+                          <td className="font-semibold">
+                            {m.first_name} {m.last_name}
+                            {m.other_name && <span className="ml-1.5 font-normal text-xs" style={{ color: "rgba(248,240,230,0.45)" }}>({m.other_name})</span>}
+                          </td>
+                          <td style={{ color: "rgba(248,240,230,0.7)" }}>{m.phone}</td>
+                          <td style={{ color: "rgba(248,240,230,0.55)" }}>{m.email ?? <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>}</td>
+                          <td><SlotBadge slot={m.preferred_slot} /></td>
+                          <td style={{ color: "rgba(248,240,230,0.7)" }}>{m.class_name ?? <span style={{ color: "rgba(248,240,230,0.3)" }}>Unassigned</span>}</td>
+                          <td className="text-sm" style={{ color: "rgba(248,240,230,0.5)" }}>{new Date(m.registered_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

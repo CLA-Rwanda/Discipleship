@@ -285,6 +285,40 @@ export async function deleteMember(
   }
 }
 
+export async function bulkDeleteMembers(
+  ids: string[]
+): Promise<{ success: boolean; error?: string }> {
+  if (ids.length === 0) return { success: true };
+  try {
+    const user = await assertAdmin();
+    const admin = createAdminClient();
+    const { data: membersInfo } = await admin.from("members").select("*").in("id", ids);
+    const batchId = randomUUID();
+    const trashRows: ReturnType<typeof buildTrashRow>[] = [];
+    let totalAttendanceAffected = 0;
+
+    for (const m of membersInfo ?? []) {
+      const { data: attRows } = await admin.from("attendance").select("id").eq("member_id", m.id);
+      const attendanceIds = (attRows ?? []).map((r: any) => r.id);
+      totalAttendanceAffected += attendanceIds.length;
+      trashRows.push(buildTrashRow(batchId, "members", m.id, m, { attendance_ids: attendanceIds }, user.email, "bulk_delete_members"));
+    }
+
+    await admin.from("attendance").update({ member_id: null }).in("member_id", ids);
+    const { error } = await admin.from("members").delete().in("id", ids);
+    if (error) return { success: false, error: error.message };
+
+    await insertTrashRows(admin, trashRows);
+    await logAdminAction(user.email, "bulk_delete_members", {
+      members: (membersInfo ?? []).map((m: any) => ({ id: m.id, name: `${m.first_name} ${m.last_name}` })),
+      attendance_affected: totalAttendanceAffected,
+    });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export async function deleteClass(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
