@@ -1,17 +1,19 @@
 "use client";
 
 import { useState, useEffect, useMemo, Fragment } from "react";
-import { Search, Download, ClipboardList, GraduationCap, Pencil, Trash2, Check, X, CalendarCheck, ChevronRight } from "lucide-react";
+import { Search, Download, ClipboardList, GraduationCap, Pencil, Trash2, Check, X, CalendarCheck, ChevronRight, AlertTriangle, Wand2 } from "lucide-react";
 import { SlotBadge } from "@/components/ui/Badge";
 import {
   updateAttendanceName,
   deleteAttendanceRecord,
   renameAttendancePerson,
   deleteAttendancePerson,
+  snapAttendanceToSunday,
 } from "@/actions/admin";
 import { getAllAttendanceForAdmin } from "@/actions/attendance";
 import { createClient } from "@/lib/supabase";
 import { downloadXLSX } from "@/lib/xlsx-export";
+import { snapToSunday } from "@/lib/dates";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,6 +198,13 @@ export default function AttendancePage() {
   const [confirmDeleteLogId, setConfirmDeleteLogId] = useState<string | null>(null);
   const [deletingLog, setDeletingLog] = useState(false);
 
+  // Non-Sunday cleanup utility
+  const [snapPanelOpen, setSnapPanelOpen] = useState(false);
+  const [snapConfirm, setSnapConfirm]     = useState(false);
+  const [snapping, setSnapping]           = useState(false);
+  const [snapError, setSnapError]         = useState("");
+  const [snapResult, setSnapResult]       = useState<{ updated: number; skipped: number } | null>(null);
+
   // Progress tab state
   const [threshold, setThreshold] = useState(16);
   const [progressSearch, setProgressSearch] = useState("");
@@ -300,6 +309,29 @@ export default function AttendancePage() {
 
   function memberAttendanceCount(classId: string | null, memberId: string): number {
     return rows.filter((r) => r.class_id === classId && r.member_id === memberId).length;
+  }
+
+  // ── Non-Sunday cleanup utility ────────────────────────────────────────────
+  const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const nonSundayRows = useMemo(
+    () => rows.filter((r) => new Date(r.attended_at).getUTCDay() !== 0),
+    [rows]
+  );
+
+  async function handleSnapAll() {
+    setSnapping(true);
+    setSnapError("");
+    const result = await snapAttendanceToSunday(nonSundayRows.map((r) => r.id));
+    setSnapping(false);
+    if (result.success) {
+      setSnapResult({ updated: result.updated ?? 0, skipped: result.skipped ?? 0 });
+      setSnapConfirm(false);
+      // Refresh from the server so dates/joins reflect the update
+      const fresh = await getAllAttendanceForAdmin();
+      setRows(fresh);
+    } else {
+      setSnapError(result.error ?? "Something went wrong.");
+    }
   }
 
   // ── Log tab ────────────────────────────────────────────────────────────────
@@ -766,6 +798,85 @@ export default function AttendancePage() {
           {/* ══ LOG TAB ═══════════════════════════════════════════════════ */}
           {tab === "log" && (
             <div className="flex flex-col gap-5">
+              {/* Non-Sunday cleanup utility */}
+              {nonSundayRows.length > 0 && (
+                <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(228,148,12,0.35)" }}>
+                  <button onClick={() => setSnapPanelOpen((v) => !v)} className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all"
+                    style={{ background: "rgba(228,148,12,0.1)" }}>
+                    <AlertTriangle size={18} style={{ color: "var(--cla-amber)", flexShrink: 0 }} />
+                    <span className="text-sm font-bold flex-1" style={{ color: "var(--cla-amber-light)" }}>
+                      {nonSundayRows.length} attendance record{nonSundayRows.length !== 1 ? "s" : ""} not on a Sunday
+                    </span>
+                    <ChevronRight size={16} style={{ color: "rgba(248,240,230,0.4)", transform: snapPanelOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+                  </button>
+                  {snapPanelOpen && (
+                    <div className="p-4 flex flex-col gap-3" style={{ background: "rgba(228,148,12,0.04)" }}>
+                      <p className="text-sm" style={{ color: "rgba(248,240,230,0.6)" }}>
+                        These were submitted late and landed on a weekday instead of the Sunday they belong to. Snapping moves each one back to the Sunday of its own week — the time of day is kept, only the date changes.
+                      </p>
+                      <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)", maxHeight: 260, overflowY: "auto" }}>
+                        <table className="cla-table" style={{ minWidth: "480px" }}>
+                          <thead>
+                            <tr><th>Name</th><th>Recorded On</th><th></th><th>Snaps To</th></tr>
+                          </thead>
+                          <tbody>
+                            {nonSundayRows.map((r) => {
+                              const from = new Date(r.attended_at);
+                              const to = new Date(snapToSunday(r.attended_at));
+                              return (
+                                <tr key={r.id}>
+                                  <td className="font-semibold text-sm">{r.member_name}</td>
+                                  <td className="text-sm" style={{ color: "#ff8c8c" }}>
+                                    {DAY_NAMES[from.getUTCDay()]}, {from.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}
+                                  </td>
+                                  <td style={{ color: "rgba(248,240,230,0.3)" }}>→</td>
+                                  <td className="text-sm font-semibold" style={{ color: "#C8D400" }}>
+                                    Sun, {to.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {snapResult !== null && !snapConfirm && (
+                        <div className="flex flex-col gap-1 p-3 rounded-lg text-sm font-semibold" style={{ background: "rgba(107,122,0,0.12)", border: "1px solid rgba(200,212,0,0.3)", color: "#c8d400" }}>
+                          <span>✓ {snapResult.updated} record{snapResult.updated !== 1 ? "s" : ""} snapped to Sunday.</span>
+                          {snapResult.skipped > 0 && (
+                            <span style={{ color: "var(--cla-amber-light)" }}>
+                              ⚠ {snapResult.skipped} skipped — that member already has a record for the target Sunday. Resolve as a duplicate in the log below.
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {snapError && <p className="text-sm" style={{ color: "#ff6b6b" }}>{snapError}</p>}
+
+                      {snapConfirm ? (
+                        <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ background: "rgba(228,148,12,0.1)", border: "1px solid rgba(228,148,12,0.3)" }}>
+                          <p className="text-sm font-bold" style={{ color: "var(--cla-amber-light)" }}>
+                            Snap all {nonSundayRows.length} record{nonSundayRows.length !== 1 ? "s" : ""} to their Sunday? This updates the stored date directly — no undo, though nothing is deleted.
+                          </p>
+                          <div className="flex gap-2">
+                            <button onClick={() => setSnapConfirm(false)} className="flex-1 py-2 rounded-lg text-sm font-bold" style={{ border: "1px solid rgba(255,255,255,0.15)", color: "rgba(248,240,230,0.6)" }}>Cancel</button>
+                            <button onClick={handleSnapAll} disabled={snapping} className="flex-1 py-2 rounded-lg text-sm font-bold"
+                              style={{ background: "linear-gradient(135deg,#E89A10,#F8BA18)", color: "#200909" }}>
+                              {snapping ? "Snapping…" : "Yes, snap all"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => { setSnapConfirm(true); setSnapResult(null); }}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold self-start transition-all"
+                          style={{ fontFamily: "Barlow Condensed, sans-serif", background: "linear-gradient(135deg,#E89A10,#F8BA18)", color: "#200909" }}>
+                          <Wand2 size={14} /> Snap All to Sunday
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Filters */}
               <div className="flex gap-3 flex-wrap">
                 <div className="relative w-full sm:flex-1 sm:min-w-[200px]">

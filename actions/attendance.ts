@@ -2,6 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase-admin";
 import { isFormLocked } from "@/actions/time-lock";
+import { snapToSunday } from "@/lib/dates";
 
 export interface AdminAttendanceRow {
   id: string;
@@ -97,15 +98,20 @@ async function recordAttendance(
 ): Promise<AttendanceSubmitResult> {
   const cls = member.classes;
 
-  // Same-day guard: one check-in per member per calendar day, regardless of
-  // which class it's under.
-  const todayKey = new Date().toISOString().slice(0, 10);
+  // Attendance is only ever meant to be recorded against a Sunday — snap the
+  // submission time back to the Sunday of its own week (Sun = day 0), so a
+  // late Mon–Sat submission still lands on the service it belongs to.
+  const attendedAt = snapToSunday(new Date().toISOString());
+  const sundayKey = attendedAt.slice(0, 10);
+
+  // Same-Sunday guard: one check-in per member per service week, regardless
+  // of which class it's under, and regardless of which day it was submitted.
   const { data: existing } = await admin
     .from("attendance")
     .select("attended_at, classes(name, slot)")
     .eq("member_id", member.id)
-    .gte("attended_at", `${todayKey}T00:00:00.000Z`)
-    .lte("attended_at", `${todayKey}T23:59:59.999Z`)
+    .gte("attended_at", `${sundayKey}T00:00:00.000Z`)
+    .lte("attended_at", `${sundayKey}T23:59:59.999Z`)
     .maybeSingle();
 
   if (existing) {
@@ -123,7 +129,7 @@ async function recordAttendance(
     member_name:  on ? `${fn} ${on} ${ln}` : `${fn} ${ln}`,
     class_id:     member.class_id,
     service_slot: cls.slot,
-    attended_at:  new Date().toISOString(),
+    attended_at:  attendedAt,
     member_id:    member.id,
   });
   if (error) return { success: false, error: error.message };

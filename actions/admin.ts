@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { assertFullAdmin } from "@/lib/assert-admin";
+import { snapToSunday } from "@/lib/dates";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -469,6 +470,61 @@ export async function deleteAttendanceRecord(
   await insertTrashRows(admin, [buildTrashRow(batchId, "attendance", id, record, null, user.email, "delete_attendance_record")]);
   await logAdminAction(user.email, "delete_attendance_record", { attendance_id: id, member_name: record.member_name, attended_at: record.attended_at });
   return { success: true };
+}
+
+// Fallback cleanup for any attendance records that landed on a non-Sunday
+// date before the auto-snap in logAttendance() was in place (or that slip
+// through some other insert path in future). Snaps each one back to the
+// Sunday of its own week, exactly like new submissions do at creation time.
+export async function snapAttendanceToSunday(
+  ids: string[]
+): Promise<{ success: boolean; error?: string; updated?: number; skipped?: number }> {
+  if (ids.length === 0) return { success: true, updated: 0, skipped: 0 };
+  try {
+    const user = await assertAdmin();
+    const admin = createAdminClient();
+    const { data: rows, error: fetchErr } = await admin.from("attendance").select("id, attended_at, member_id").in("id", ids);
+    if (fetchErr) return { success: false, error: fetchErr.message };
+
+    let updated = 0;
+    let skipped = 0;
+    const changes: { id: string; from: string; to: string }[] = [];
+    for (const row of rows ?? []) {
+      const snapped = snapToSunday(row.attended_at);
+      if (snapped === row.attended_at) continue; // already a Sunday
+
+      // Don't silently create a duplicate: if this member already has a
+      // record for the Sunday we're about to snap onto, leave this one
+      // alone so an admin can resolve it manually as a duplicate instead.
+      if (row.member_id) {
+        const sundayKey = snapped.slice(0, 10);
+        const { data: collision } = await admin
+          .from("attendance")
+          .select("id")
+          .eq("member_id", row.member_id)
+          .neq("id", row.id)
+          .gte("attended_at", `${sundayKey}T00:00:00.000Z`)
+          .lte("attended_at", `${sundayKey}T23:59:59.999Z`)
+          .maybeSingle();
+        if (collision) {
+          skipped++;
+          continue;
+        }
+      }
+
+      const { error } = await admin.from("attendance").update({ attended_at: snapped }).eq("id", row.id);
+      if (error) continue;
+      changes.push({ id: row.id, from: row.attended_at, to: snapped });
+      updated++;
+    }
+
+    if (updated > 0 || skipped > 0) {
+      await logAdminAction(user.email, "snap_attendance_to_sunday", { record_count: updated, skipped, changes });
+    }
+    return { success: true, updated, skipped };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
 }
 
 function normName(s: string) {
