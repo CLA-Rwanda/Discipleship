@@ -186,6 +186,7 @@ export default function AttendancePage() {
 
   // Snapshot tab state
   const [selectedDate, setSelectedDate] = useState<string>("all");
+  const [snapshotSearch, setSnapshotSearch] = useState("");
   const [expandedSnapshotClasses, setExpandedSnapshotClasses] = useState<Set<string>>(new Set());
   const [savingSnapshotMemberId, setSavingSnapshotMemberId] = useState<string | null>(null);
   const [snapshotStatusError, setSnapshotStatusError] = useState("");
@@ -295,6 +296,15 @@ export default function AttendancePage() {
     const total = rows.filter((r) => dateKeyOf(r.attended_at) === prevDate).length;
     return { date: prevDate, total };
   }, [selectedDate, availableDates, rows]);
+
+  const filteredSnapshotClasses = useMemo(() => {
+    const query = snapshotSearch.trim().toLowerCase();
+    if (!query) return snapshotStats.classes;
+    return snapshotStats.classes.filter((c) => {
+      const roster = classRoster.find((cr) => cr.id === c.classId)?.members ?? [];
+      return [c.name, c.slot, c.facilitator ?? "", ...roster.map(memberDisplayName)].some((value) => value.toLowerCase().includes(query));
+    });
+  }, [snapshotSearch, snapshotStats.classes, classRoster]);
 
   function toggleSnapshotClass(key: string) {
     setExpandedSnapshotClasses((prev) => {
@@ -487,6 +497,17 @@ export default function AttendancePage() {
           {/* ══ SNAPSHOT TAB ══════════════════════════════════════════════ */}
           {tab === "snapshot" && (
             <div className="flex flex-col gap-5">
+              <div className="relative max-w-md">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "rgba(248,240,230,0.35)" }} />
+                <input
+                  type="search"
+                  placeholder="Search by class, facilitator, or member…"
+                  value={snapshotSearch}
+                  onChange={(e) => setSnapshotSearch(e.target.value)}
+                  className="cla-input pl-9 text-sm w-full"
+                  aria-label="Search Sunday Snapshot"
+                />
+              </div>
               {/* Date selector */}
               <div className="flex gap-2 overflow-x-auto pb-1">
                 <button onClick={() => setSelectedDate("all")}
@@ -548,7 +569,9 @@ export default function AttendancePage() {
                           <tr><th>Class</th><th>Facilitator</th><th>Slot</th><th>Attended</th></tr>
                         </thead>
                         <tbody>
-                          {snapshotStats.classes.map((c) => {
+                          {filteredSnapshotClasses.length === 0 ? (
+                            <tr><td colSpan={4} className="text-center py-10" style={{ color: "rgba(248,240,230,0.4)" }}>No classes or members match this search.</td></tr>
+                          ) : filteredSnapshotClasses.map((c) => {
                             const key = c.classId ?? c.name;
                             const isExpanded = expandedSnapshotClasses.has(key);
                             const rosterMembers = classRoster.find((cr) => cr.id === c.classId)?.members ?? [];
