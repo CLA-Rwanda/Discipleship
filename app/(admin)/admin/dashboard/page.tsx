@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Users, BookOpen, ClipboardList, AlertTriangle, CheckCircle2, ChevronDown, Search, Download, Trash2 } from "lucide-react";
+import { Users, BookOpen, ClipboardList, AlertTriangle, CheckCircle2, ChevronDown, Search, Download, Trash2, Trophy, TrendingDown } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -33,6 +33,18 @@ interface NeverAttendedMember {
   preferred_slot: string;
   class_name?: string;
   registered_at: string;
+}
+
+interface AttendanceRecordForChart {
+  attended_at: string;
+  class_id: string | null;
+}
+
+interface AttendanceClass {
+  id: string;
+  name: string;
+  slot: string;
+  facilitator_name: string | null;
 }
 
 const AMBER       = "#E89A10";
@@ -75,7 +87,14 @@ export default function DashboardPage() {
   const [stats, setStats]   = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [attendanceDates, setAttendanceDates] = useState<string[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecordForChart[]>([]);
+  const [attendanceClasses, setAttendanceClasses] = useState<AttendanceClass[]>([]);
   const [weeksToShow, setWeeksToShow] = useState(4);
+  const [attendancePeriod, setAttendancePeriod] = useState<"month" | "range" | "sunday" | "all">("month");
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
+  const [selectedSunday, setSelectedSunday] = useState("");
   const [neverAttendedMembers, setNeverAttendedMembers] = useState<NeverAttendedMember[]>([]);
   const [neverAttendedOpen, setNeverAttendedOpen] = useState(false);
   const [neverAttendedSearch, setNeverAttendedSearch] = useState("");
@@ -102,9 +121,9 @@ export default function DashboardPage() {
       ] = await Promise.all([
         supabase.from("members").select("*", { count: "exact", head: true }),
         supabase.from("attendance").select("*", { count: "exact", head: true }).gte("attended_at", weekAgo.toISOString()),
-        supabase.from("classes").select("id, name, slot, members(count)").eq("is_active", true).order("name"),
+        supabase.from("classes").select("id, name, slot, members(count), facilitators(full_name)").eq("is_active", true).order("name"),
         supabase.from("members").select("preferred_slot"),
-        supabase.from("attendance").select("attended_at"),
+        supabase.from("attendance").select("attended_at, class_id"),
         supabase.from("attendance").select("member_id").not("member_id", "is", null),
         supabase.from("app_settings").select("key,value"),
         supabase.from("members").select("id, first_name, last_name, other_name, phone, email, preferred_slot, registered_at, classes(name)"),
@@ -131,6 +150,10 @@ export default function DashboardPage() {
         .map(([slot, value]) => ({ name: slot.toUpperCase(), value }));
 
       setAttendanceDates((attendanceRaw ?? []).map((r: any) => r.attended_at as string));
+      setAttendanceRecords((attendanceRaw ?? []).map((r: any) => ({ attended_at: r.attended_at, class_id: r.class_id ?? null })));
+      setAttendanceClasses((classes ?? []).map((c: any) => ({
+        id: c.id, name: c.name, slot: c.slot, facilitator_name: c.facilitators?.full_name ?? null,
+      })));
 
       const attendedIds = new Set((membersWithAttendance ?? []).map((r: any) => r.member_id).filter(Boolean));
       setNeverAttendedMembers(
@@ -181,6 +204,41 @@ export default function DashboardPage() {
       count: byDate.get(date) ?? 0,
     }));
   }, [attendanceDates, weeksToShow]);
+
+  const recordedSundays = useMemo(
+    () => Array.from(new Set(attendanceRecords.map((record) => dateKeyOf(record.attended_at)))).sort((a, b) => b.localeCompare(a)),
+    [attendanceRecords]
+  );
+
+  useEffect(() => {
+    if (!selectedSunday && recordedSundays.length > 0) setSelectedSunday(recordedSundays[0]);
+  }, [recordedSundays, selectedSunday]);
+
+  const classAttendance = useMemo(() => {
+    const matchingRecords = attendanceRecords.filter((record) => {
+      const date = dateKeyOf(record.attended_at);
+      if (attendancePeriod === "month") return date.startsWith(selectedMonth);
+      if (attendancePeriod === "sunday") return date === selectedSunday;
+      if (attendancePeriod === "range") return (!rangeStart || date >= rangeStart) && (!rangeEnd || date <= rangeEnd);
+      return true;
+    });
+    const countByClass = new Map<string, number>();
+    for (const record of matchingRecords) {
+      if (record.class_id) countByClass.set(record.class_id, (countByClass.get(record.class_id) ?? 0) + 1);
+    }
+    return attendanceClasses.map((cls) => ({
+      ...cls,
+      label: `${cls.name} (${cls.slot.toUpperCase()})`,
+      count: countByClass.get(cls.id) ?? 0,
+    })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }, [attendanceRecords, attendanceClasses, attendancePeriod, selectedMonth, selectedSunday, rangeStart, rangeEnd]);
+
+  const classAttendanceSummary = useMemo(() => {
+    if (classAttendance.length === 0 || classAttendance.every((cls) => cls.count === 0)) return null;
+    const highest = classAttendance[0];
+    const lowest = classAttendance[classAttendance.length - 1];
+    return { highest, lowest };
+  }, [classAttendance]);
 
   if (loading) {
     return (
@@ -307,6 +365,71 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           )}
         </div>
+      </div>
+
+      <div className="cla-card p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+          <div>
+            <h2 className="text-lg font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Class Attendance Follow-up</h2>
+            <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
+              Compare class attendance to identify facilitators who may need follow-up.
+            </p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <div className="relative">
+              <select value={attendancePeriod} onChange={(e) => setAttendancePeriod(e.target.value as typeof attendancePeriod)} className="cla-input appearance-none pr-7 text-sm" style={{ width: "auto", minHeight: 34, padding: "6px 28px 6px 10px" }}>
+                <option value="month">Particular month</option>
+                <option value="range">Date range</option>
+                <option value="sunday">One Sunday</option>
+                <option value="all">All time</option>
+              </select>
+              <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(248,240,230,0.4)" }} />
+            </div>
+            {attendancePeriod === "month" && <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="cla-input text-sm" style={{ width: "auto", minHeight: 34, padding: "6px 10px", colorScheme: "dark" }} />}
+            {attendancePeriod === "sunday" && (
+              <div className="relative">
+                <select value={selectedSunday} onChange={(e) => setSelectedSunday(e.target.value)} className="cla-input appearance-none pr-7 text-sm" style={{ width: "auto", minHeight: 34, padding: "6px 28px 6px 10px" }}>
+                  {recordedSundays.map((date) => <option key={date} value={date}>{formatDateShort(date)}</option>)}
+                </select>
+                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "rgba(248,240,230,0.4)" }} />
+              </div>
+            )}
+            {attendancePeriod === "range" && <><input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} aria-label="Attendance range start" className="cla-input text-sm" style={{ width: 142, minHeight: 34, padding: "6px 8px", colorScheme: "dark" }} /><input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} aria-label="Attendance range end" className="cla-input text-sm" style={{ width: 142, minHeight: 34, padding: "6px 8px", colorScheme: "dark" }} /></>}
+          </div>
+        </div>
+
+        {classAttendanceSummary && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+            <div className="p-3 rounded-lg" style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.25)" }}>
+              <p className="text-xs uppercase tracking-widest flex items-center gap-1.5" style={{ color: "#4ade80", fontFamily: "Barlow Condensed, sans-serif" }}><Trophy size={14} /> Highest attendance</p>
+              <p className="font-bold mt-1">{classAttendanceSummary.highest.label}</p>
+              <p className="text-sm" style={{ color: "rgba(248,240,230,0.55)" }}>{classAttendanceSummary.highest.count} attendance record{classAttendanceSummary.highest.count !== 1 ? "s" : ""} · {classAttendanceSummary.highest.facilitator_name ?? "No facilitator assigned"}</p>
+            </div>
+            <div className="p-3 rounded-lg" style={{ background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)" }}>
+              <p className="text-xs uppercase tracking-widest flex items-center gap-1.5" style={{ color: "#ff6b6b", fontFamily: "Barlow Condensed, sans-serif" }}><TrendingDown size={14} /> Lowest attendance</p>
+              <p className="font-bold mt-1">{classAttendanceSummary.lowest.label}</p>
+              <p className="text-sm" style={{ color: "rgba(248,240,230,0.55)" }}>{classAttendanceSummary.lowest.count} attendance record{classAttendanceSummary.lowest.count !== 1 ? "s" : ""} · {classAttendanceSummary.lowest.facilitator_name ?? "No facilitator assigned"}</p>
+            </div>
+          </div>
+        )}
+
+        {classAttendance.length === 0 ? (
+          <p className="text-center py-12 text-sm" style={{ color: "rgba(248,240,230,0.4)" }}>No active classes to compare.</p>
+        ) : !classAttendanceSummary ? (
+          <p className="text-center py-12 text-sm" style={{ color: "rgba(248,240,230,0.4)" }}>No attendance records in this period.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(260, classAttendance.length * 34)}>
+            <BarChart data={classAttendance} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
+              <XAxis type="number" allowDecimals={false} stroke="rgba(248,240,230,0.3)" tick={{ fill: "rgba(248,240,230,0.5)", fontSize: 12 }} />
+              <YAxis type="category" dataKey="label" width={115} stroke="rgba(248,240,230,0.3)" tick={{ fill: "rgba(248,240,230,0.55)", fontSize: 10 }} />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="count" name="Attendance" radius={[0, 3, 3, 0]}>
+                {classAttendance.map((cls) => <Cell key={cls.id} fill={cls.id === classAttendanceSummary.highest.id ? "#4ade80" : cls.id === classAttendanceSummary.lowest.id ? "#ff6b6b" : AMBER} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       <div className="cla-card p-5">
