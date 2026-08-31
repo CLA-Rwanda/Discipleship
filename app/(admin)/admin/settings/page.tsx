@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { KeyRound, Eye, EyeOff, ShieldCheck, Skull, AlertTriangle, SlidersHorizontal, Save, Lock, Plus, Trash2, UserCheck, Calendar, ListChecks, ScrollText, RotateCcw, Archive } from "lucide-react";
+import { KeyRound, Eye, EyeOff, ShieldCheck, Skull, AlertTriangle, SlidersHorizontal, Save, Lock, Plus, Trash2, UserCheck, Calendar, ListChecks, ScrollText, RotateCcw, Archive, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { SlotBadge } from "@/components/ui/Badge";
@@ -37,6 +37,16 @@ function daysLeft(expiresAt: string): number {
   return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
 }
 
+function trashSearchText(entry: TrashEntry): string {
+  return [
+    TRASH_TABLE_LABELS[entry.table_name],
+    describeTrashItem(entry),
+    entry.deleted_by,
+    entry.action,
+    JSON.stringify(entry.data),
+  ].filter(Boolean).join(" ").toLocaleLowerCase();
+}
+
 interface SettingField {
   key: string;
   label: string;
@@ -52,6 +62,7 @@ const SETTING_FIELDS: SettingField[] = [
 
 export default function SettingsPage() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [activeTab, setActiveTab] = useState<"settings" | "history">("settings");
 
   // App settings
   const [appSettings, setAppSettings] = useState<Record<string, string>>({
@@ -110,6 +121,7 @@ export default function SettingsPage() {
   const [restoringId, setRestoringId]     = useState<string | null>(null);
   const [restoringBatch, setRestoringBatch] = useState<string | null>(null);
   const [trashError, setTrashError]       = useState("");
+  const [trashSearch, setTrashSearch]     = useState("");
 
   // Password
   const [form, setForm]         = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
@@ -286,8 +298,12 @@ export default function SettingsPage() {
     else setTrashError(result.error ?? "Restore failed.");
   }
 
+  const normalizedTrashSearch = trashSearch.trim().toLocaleLowerCase();
+  const filteredTrashItems = normalizedTrashSearch
+    ? trashItems.filter((item) => trashSearchText(item).includes(normalizedTrashSearch))
+    : trashItems;
   const trashBatches = Object.values(
-    trashItems.reduce((acc: Record<string, TrashEntry[]>, item) => {
+    filteredTrashItems.reduce((acc: Record<string, TrashEntry[]>, item) => {
       (acc[item.batch_id] ??= []).push(item);
       return acc;
     }, {})
@@ -375,11 +391,35 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in max-w-lg">
-      <div>
-        <h1 className="text-3xl font-extrabold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Settings</h1>
-        <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.5)" }}>App configuration and admin account</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Settings</h1>
+          <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.5)" }}>
+            {activeTab === "settings" ? "App configuration and admin account" : "Recycle bin and recent admin activity"}
+          </p>
+        </div>
+        {isSuperAdmin && (
+          <div className="flex shrink-0 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
+            {(["settings", "history"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className="px-3 py-1.5 text-sm font-bold transition-all"
+                style={{
+                  background: activeTab === tab ? "rgba(228,148,12,0.15)" : "rgba(255,255,255,0.04)",
+                  color: activeTab === tab ? "var(--cla-amber)" : "rgba(248,240,230,0.6)",
+                  borderLeft: tab === "history" ? "1px solid rgba(255,255,255,0.1)" : undefined,
+                }}
+              >
+                {tab === "settings" ? "Settings" : "History"}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
+      {activeTab === "settings" && <>
       {/* Account info */}
       <div className="rounded-xl p-5" style={cardStyle}>
         <div className="flex items-center gap-3">
@@ -907,106 +947,97 @@ export default function SettingsPage() {
               </div>
             )}
 
-            <div style={{ borderTop: "1px solid rgba(192,40,40,0.25)" }} />
-
-            {/* Recycle Bin */}
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <p className="font-bold flex items-center gap-2" style={{ color: "rgba(248,240,230,0.85)" }}>
-                  <Archive size={15} style={{ color: "#ff4444" }} /> Recycle Bin
-                </p>
-                <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
-                  Deleted members, facilitators, classes, and attendance records land here for 15 days before being purged for good — restore anything, anytime before then.
-                </p>
-              </div>
-              {trashItems.length > 0 && (
-                <span className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold" style={{ background: "rgba(192,40,40,0.15)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.35)" }}>
-                  {trashItems.length} item{trashItems.length !== 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
-
-            {trashLoading ? (
-              <div className="flex items-center justify-center py-4">
-                <div className="spinner" style={{ width: 20, height: 20, borderTopColor: "#ff4444", borderColor: "rgba(192,40,40,0.2)" }} />
-              </div>
-            ) : trashBatches.length === 0 ? (
-              <p className="text-sm text-center py-3" style={{ color: "rgba(248,240,230,0.3)" }}>Recycle bin is empty.</p>
-            ) : (
-              <div className="flex flex-col gap-3 max-h-80 overflow-y-auto pr-1">
-                {trashBatches.map((batch) => {
-                  const first = batch[0];
-                  return (
-                    <div key={first.batch_id} className="p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                      <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                        <div>
-                          <p className="text-xs font-bold" style={{ color: "rgba(248,240,230,0.7)" }}>
-                            {first.deleted_by ?? "Unknown admin"} · {new Date(first.deleted_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                          </p>
-                          <p className="text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>
-                            Expires in {daysLeft(first.expires_at)} day{daysLeft(first.expires_at) !== 1 ? "s" : ""}
-                          </p>
-                        </div>
-                        {batch.length > 1 && (
-                          <button onClick={() => handleRestoreBatch(first.batch_id)} disabled={restoringBatch === first.batch_id}
-                            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-bold shrink-0"
-                            style={{ background: "rgba(200,212,0,0.12)", color: "#C8D400", border: "1px solid rgba(200,212,0,0.3)" }}>
-                            <RotateCcw size={12} /> {restoringBatch === first.batch_id ? "Restoring…" : `Restore all ${batch.length}`}
-                          </button>
-                        )}
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        {batch.map((item) => (
-                          <div key={item.id} className="flex items-center justify-between gap-3 px-2.5 py-1.5 rounded" style={{ background: "rgba(255,255,255,0.03)" }}>
-                            <span className="text-sm truncate" style={{ color: "rgba(248,240,230,0.8)" }}>
-                              <span className="text-xs font-bold mr-1.5" style={{ color: "rgba(248,240,230,0.4)" }}>{TRASH_TABLE_LABELS[item.table_name]}</span>
-                              {describeTrashItem(item)}
-                            </span>
-                            <button onClick={() => handleRestoreItem(item.id)} disabled={restoringId === item.id}
-                              className="text-xs px-2 py-1 rounded font-bold shrink-0" style={{ background: "rgba(200,212,0,0.12)", color: "#C8D400", border: "1px solid rgba(200,212,0,0.3)" }}>
-                              {restoringId === item.id ? "…" : "Restore"}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {trashError && <p className="text-sm" style={{ color: "#ff6b6b" }}>{trashError}</p>}
-
-            <div style={{ borderTop: "1px solid rgba(192,40,40,0.25)" }} />
-
-            {/* Recent Danger Zone Activity */}
-            <div>
-              <p className="font-bold flex items-center gap-2" style={{ color: "rgba(248,240,230,0.85)" }}>
-                <ScrollText size={15} style={{ color: "#ff4444" }} /> Recent Activity
-              </p>
-              <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
-                Who deleted or erased what, and when. Logged automatically for every Danger Zone action.
-              </p>
-            </div>
-            {auditLogLoading ? (
-              <div className="flex items-center justify-center py-4">
-                <div className="spinner" style={{ width: 20, height: 20, borderTopColor: "#ff4444", borderColor: "rgba(192,40,40,0.2)" }} />
-              </div>
-            ) : auditLog.length === 0 ? (
-              <p className="text-sm text-center py-3" style={{ color: "rgba(248,240,230,0.3)" }}>No Danger Zone actions recorded yet.</p>
-            ) : (
-              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1">
-                {auditLog.map((entry) => (
-                  <div key={entry.id} className="px-3 py-2.5 rounded-lg text-sm" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <p style={{ color: "rgba(248,240,230,0.8)" }}>{describeLogEntry(entry)}</p>
-                    <p className="text-xs mt-1" style={{ color: "rgba(248,240,230,0.4)" }}>
-                      {entry.actor_email ?? "Unknown admin"} · {new Date(entry.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
+      )}
+      </>}
+
+      {activeTab === "history" && isSuperAdmin && (
+        <>
+          <div className="rounded-xl overflow-hidden" style={cardStyle}>
+            <div className="px-5 py-4" style={headerBorder}>
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="text-lg font-bold flex items-center gap-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>
+                    <Archive size={18} style={{ color: "#ff4444" }} /> Recycle Bin
+                  </h2>
+                  <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>
+                    Deleted items are recoverable for 15 days.
+                  </p>
+                </div>
+                {trashItems.length > 0 && (
+                  <span className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold" style={{ background: "rgba(192,40,40,0.15)", color: "#ff6b6b", border: "1px solid rgba(192,40,40,0.35)" }}>
+                    {normalizedTrashSearch ? `${filteredTrashItems.length} of ${trashItems.length}` : trashItems.length} item{trashItems.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+              <div className="relative mt-4">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "rgba(248,240,230,0.4)" }} />
+                <input
+                  type="search"
+                  value={trashSearch}
+                  onChange={(e) => setTrashSearch(e.target.value)}
+                  placeholder="Search deleted names, classes, attendance, or admin…"
+                  className="cla-input w-full pl-9 text-sm"
+                  aria-label="Search recycle bin"
+                />
+              </div>
+            </div>
+
+            <div className="p-5">
+              {trashLoading ? (
+                <div className="flex items-center justify-center py-4"><div className="spinner" style={{ width: 20, height: 20, borderTopColor: "#ff4444", borderColor: "rgba(192,40,40,0.2)" }} /></div>
+              ) : trashBatches.length === 0 ? (
+                <p className="text-sm text-center py-3" style={{ color: "rgba(248,240,230,0.3)" }}>
+                  {normalizedTrashSearch ? "No deleted items match this search." : "Recycle bin is empty."}
+                </p>
+              ) : (
+                <div className="flex flex-col gap-3 max-h-80 overflow-y-auto pr-1">
+                  {trashBatches.map((batch) => {
+                    const first = batch[0];
+                    return (
+                      <div key={first.batch_id} className="p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                          <div>
+                            <p className="text-xs font-bold" style={{ color: "rgba(248,240,230,0.7)" }}>{first.deleted_by ?? "Unknown admin"} · {new Date(first.deleted_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                            <p className="text-xs" style={{ color: "rgba(248,240,230,0.4)" }}>Expires in {daysLeft(first.expires_at)} day{daysLeft(first.expires_at) !== 1 ? "s" : ""}</p>
+                          </div>
+                          {batch.length > 1 && !normalizedTrashSearch && (
+                            <button onClick={() => handleRestoreBatch(first.batch_id)} disabled={restoringBatch === first.batch_id} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-bold shrink-0" style={{ background: "rgba(200,212,0,0.12)", color: "#C8D400", border: "1px solid rgba(200,212,0,0.3)" }}>
+                              <RotateCcw size={12} /> {restoringBatch === first.batch_id ? "Restoring…" : `Restore all ${batch.length}`}
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          {batch.map((item) => (
+                            <div key={item.id} className="flex items-center justify-between gap-3 px-2.5 py-1.5 rounded" style={{ background: "rgba(255,255,255,0.03)" }}>
+                              <span className="text-sm truncate" style={{ color: "rgba(248,240,230,0.8)" }}><span className="text-xs font-bold mr-1.5" style={{ color: "rgba(248,240,230,0.4)" }}>{TRASH_TABLE_LABELS[item.table_name]}</span>{describeTrashItem(item)}</span>
+                              <button onClick={() => handleRestoreItem(item.id)} disabled={restoringId === item.id} className="text-xs px-2 py-1 rounded font-bold shrink-0" style={{ background: "rgba(200,212,0,0.12)", color: "#C8D400", border: "1px solid rgba(200,212,0,0.3)" }}>{restoringId === item.id ? "…" : "Restore"}</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {normalizedTrashSearch && trashBatches.length > 0 && <p className="text-xs mt-3" style={{ color: "rgba(248,240,230,0.4)" }}>Clear search to restore an entire deletion batch.</p>}
+              {trashError && <p className="text-sm mt-3" style={{ color: "#ff6b6b" }}>{trashError}</p>}
+            </div>
+          </div>
+
+          <div className="rounded-xl overflow-hidden" style={cardStyle}>
+            <div className="px-5 py-4" style={headerBorder}>
+              <h2 className="text-lg font-bold flex items-center gap-2" style={{ fontFamily: "Barlow Condensed, sans-serif" }}><ScrollText size={18} style={{ color: "#ff4444" }} /> Recent Activity</h2>
+              <p className="text-sm mt-0.5" style={{ color: "rgba(248,240,230,0.45)" }}>Who deleted or erased what, and when.</p>
+            </div>
+            <div className="p-5">
+              {auditLogLoading ? <div className="flex items-center justify-center py-4"><div className="spinner" style={{ width: 20, height: 20, borderTopColor: "#ff4444", borderColor: "rgba(192,40,40,0.2)" }} /></div>
+                : auditLog.length === 0 ? <p className="text-sm text-center py-3" style={{ color: "rgba(248,240,230,0.3)" }}>No Danger Zone actions recorded yet.</p>
+                : <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1">{auditLog.map((entry) => <div key={entry.id} className="px-3 py-2.5 rounded-lg text-sm" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}><p style={{ color: "rgba(248,240,230,0.8)" }}>{describeLogEntry(entry)}</p><p className="text-xs mt-1" style={{ color: "rgba(248,240,230,0.4)" }}>{entry.actor_email ?? "Unknown admin"} · {new Date(entry.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p></div>)}</div>}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
