@@ -306,6 +306,14 @@ export default function AttendancePage() {
     });
   }, [snapshotSearch, snapshotStats.classes, classRoster]);
 
+  function snapshotRosterMembers(c: SnapshotClassRow): RosterMember[] {
+    const roster = classRoster.find((cr) => cr.id === c.classId)?.members ?? [];
+    const query = snapshotSearch.trim().toLowerCase();
+    if (!query) return roster;
+    const classMatches = [c.name, c.slot, c.facilitator ?? ""].some((value) => value.toLowerCase().includes(query));
+    return classMatches ? roster : roster.filter((member) => memberDisplayName(member).toLowerCase().includes(query));
+  }
+
   function toggleSnapshotClass(key: string) {
     setExpandedSnapshotClasses((prev) => {
       const next = new Set(prev);
@@ -574,7 +582,7 @@ export default function AttendancePage() {
                           ) : filteredSnapshotClasses.map((c) => {
                             const key = c.classId ?? c.name;
                             const isExpanded = expandedSnapshotClasses.has(key);
-                            const rosterMembers = classRoster.find((cr) => cr.id === c.classId)?.members ?? [];
+                            const rosterMembers = snapshotRosterMembers(c);
                             return (
                               <Fragment key={key}>
                                 <tr>
