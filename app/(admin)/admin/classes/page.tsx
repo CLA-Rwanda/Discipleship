@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { FillBar } from "@/components/ui/FillBar";
 import { createClient } from "@/lib/supabase";
-import { updateMember, deleteMember } from "@/actions/admin";
+import { updateMember, deleteMember, moveMemberToClass, swapMembersBetweenClasses } from "@/actions/admin";
 import { getAppSettings } from "@/actions/settings";
 import { downloadXLSX } from "@/lib/xlsx-export";
 import type { Class, Member, Facilitator } from "@/lib/types";
@@ -34,6 +34,7 @@ export default function ClassesPage() {
   const [moveState, setMoveState]       = useState<{ member: Member; fromClass: ClassWithDetails } | null>(null);
   const [targetClassId, setTargetClassId] = useState("");
   const [movingId, setMovingId]         = useState<string | null>(null);
+  const [moveError, setMoveError]       = useState("");
   const [filterSlot, setFilterSlot]     = useState<string>("all");
   const [search, setSearch]             = useState("");
   const [memberSortMode, setMemberSortMode] = useState<"none" | "name" | "registered">("none");
@@ -43,6 +44,7 @@ export default function ClassesPage() {
   const [swapTargetClassId, setSwapTargetClassId]   = useState("");
   const [swapTargetMemberId, setSwapTargetMemberId] = useState("");
   const [swapping, setSwapping]         = useState(false);
+  const [swapError, setSwapError]       = useState("");
 
   // Add class modal
   const [addOpen, setAddOpen]           = useState(false);
@@ -182,9 +184,10 @@ export default function ClassesPage() {
     const targetClass = classes.find((c) => c.id === targetClassId);
     if (!targetClass) return;
     setMovingId(moveState.member.id);
-    const supabase = createClient();
-    await supabase.from("members").update({ class_id: targetClassId, preferred_slot: targetClass.slot }).eq("id", moveState.member.id);
+    setMoveError("");
+    const result = await moveMemberToClass(moveState.member.id, targetClassId);
     setMovingId(null);
+    if (!result.success) { setMoveError(result.error ?? "Could not move this member."); return; }
     setMoveState(null);
     setTargetClassId("");
     fetchClasses();
@@ -196,10 +199,10 @@ export default function ClassesPage() {
     const targetMember = targetClass?.members.find((m: any) => m.id === swapTargetMemberId);
     if (!targetClass || !targetMember) return;
     setSwapping(true);
-    const supabase = createClient();
-    await supabase.from("members").update({ class_id: swapTargetClassId, preferred_slot: targetClass.slot }).eq("id", swapState.member.id);
-    await supabase.from("members").update({ class_id: swapState.fromClass.id, preferred_slot: swapState.fromClass.slot }).eq("id", targetMember.id);
+    setSwapError("");
+    const result = await swapMembersBetweenClasses(swapState.member.id, targetMember.id);
     setSwapping(false);
+    if (!result.success) { setSwapError(result.error ?? "Could not swap these members."); return; }
     setSwapState(null);
     setSwapTargetClassId("");
     setSwapTargetMemberId("");
@@ -460,11 +463,11 @@ export default function ClassesPage() {
                                           <td style={{ color: "rgba(248,240,230,0.55)" }}>{member.email ?? <span style={{ color: "rgba(248,240,230,0.25)" }}>—</span>}</td>
                                           <td>
                                             <div className="flex items-center gap-1.5">
-                                              <button onClick={() => { setMoveState({ member, fromClass: cls }); setTargetClassId(""); }}
+                                              <button onClick={() => { setMoveState({ member, fromClass: cls }); setTargetClassId(""); setMoveError(""); }}
                                                 className="p-1.5 rounded-lg transition-all" style={{ color: "#b47fea" }} title="Move to another class">
                                                 <MoveRight size={14} />
                                               </button>
-                                              <button onClick={() => { setSwapState({ member, fromClass: cls }); setSwapTargetClassId(""); setSwapTargetMemberId(""); }}
+                                              <button onClick={() => { setSwapState({ member, fromClass: cls }); setSwapTargetClassId(""); setSwapTargetMemberId(""); setSwapError(""); }}
                                                 className="p-1.5 rounded-lg transition-all" style={{ color: "#4ade80" }} title="Swap with a member in another class">
                                                 <ArrowLeftRight size={14} />
                                               </button>
@@ -536,6 +539,7 @@ export default function ClassesPage() {
                 <MoveRight size={16} /> Confirm Move
               </Button>
             </div>
+            {moveError && <p className="text-sm" style={{ color: "#ff6b6b" }}>{moveError}</p>}
           </div>
         )}
       </Modal>
@@ -591,6 +595,7 @@ export default function ClassesPage() {
                 <ArrowLeftRight size={16} /> Confirm Swap
               </Button>
             </div>
+            {swapError && <p className="text-sm" style={{ color: "#ff6b6b" }}>{swapError}</p>}
           </div>
         )}
       </Modal>

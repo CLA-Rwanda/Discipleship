@@ -259,6 +259,46 @@ export async function updateMember(
   }
 }
 
+// ── Member transfers ───────────────────────────────────────────────────────
+
+export async function moveMemberToClass(
+  memberId: string,
+  targetClassId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const user = await assertAdmin();
+    const admin = createAdminClient();
+    const { error } = await admin.rpc("move_member_to_class", {
+      p_member_id: memberId,
+      p_target_class_id: targetClassId,
+    });
+    if (error) return { success: false, error: error.message };
+    await logAdminAction(user.email, "move_member", { member_id: memberId, target_class_id: targetClassId });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function swapMembersBetweenClasses(
+  firstMemberId: string,
+  secondMemberId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const user = await assertAdmin();
+    const admin = createAdminClient();
+    const { error } = await admin.rpc("swap_members_between_classes", {
+      p_first_member_id: firstMemberId,
+      p_second_member_id: secondMemberId,
+    });
+    if (error) return { success: false, error: error.message };
+    await logAdminAction(user.email, "swap_members", { first_member_id: firstMemberId, second_member_id: secondMemberId });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export async function deleteMember(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
