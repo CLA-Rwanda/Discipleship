@@ -512,6 +512,56 @@ export async function deleteAttendanceRecord(
   return { success: true };
 }
 
+/** Sets one member's attendance for a selected Sunday from the admin snapshot. */
+export async function setMemberAttendanceStatus(
+  memberId: string,
+  sunday: string,
+  present: boolean
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const user = await assertAdmin();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(sunday)) return { success: false, error: "Invalid attendance date." };
+    const admin = createAdminClient();
+    const start = `${sunday}T00:00:00.000Z`;
+    const end = `${sunday}T23:59:59.999Z`;
+    const { data: member, error: memberError } = await admin
+      .from("members")
+      .select("id, first_name, last_name, other_name, class_id, classes(name, slot)")
+      .eq("id", memberId)
+      .maybeSingle();
+    if (memberError || !member?.class_id || !member.classes) return { success: false, error: "Member must belong to an active class." };
+
+    const { data: existing, error: existingError } = await admin
+      .from("attendance")
+      .select("id, member_name, class_id, service_slot, attended_at, member_id")
+      .eq("member_id", memberId)
+      .gte("attended_at", start)
+      .lte("attended_at", end)
+      .maybeSingle();
+    if (existingError) return { success: false, error: existingError.message };
+
+    if (present) {
+      if (existing) return { success: true };
+      const cls = member.classes as any;
+      const name = [member.first_name, member.other_name, member.last_name].filter(Boolean).join(" ");
+      const { error } = await admin.from("attendance").insert({
+        member_id: member.id, member_name: name, class_id: member.class_id,
+        service_slot: cls.slot, attended_at: `${sunday}T12:00:00.000Z`,
+      });
+      if (error) return { success: false, error: error.message };
+    } else {
+      if (!existing) return { success: true };
+      const { error } = await admin.from("attendance").delete().eq("id", existing.id);
+      if (error) return { success: false, error: error.message };
+      await insertTrashRows(admin, [buildTrashRow(randomUUID(), "attendance", existing.id, existing, null, user.email, "mark_member_absent")]);
+    }
+    await logAdminAction(user.email, present ? "mark_member_present" : "mark_member_absent", { member_id: memberId, sunday });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 // Fallback cleanup for any attendance records that landed on a non-Sunday
 // date before the auto-snap in logAttendance() was in place (or that slip
 // through some other insert path in future). Snaps each one back to the

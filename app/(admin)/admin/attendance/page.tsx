@@ -9,6 +9,7 @@ import {
   renameAttendancePerson,
   deleteAttendancePerson,
   snapAttendanceToSunday,
+  setMemberAttendanceStatus,
 } from "@/actions/admin";
 import { getAllAttendanceForAdmin } from "@/actions/attendance";
 import { createClient } from "@/lib/supabase";
@@ -95,7 +96,7 @@ function exportSnapshotCSV(
   selectedDate: string
 ) {
   if (selectedDate === "all") {
-    const header = ["Class", "Facilitator", "Slot", "Student", ...availableDates.map((d) => formatDateShort(d)), "Sessions Attended", "Total Sessions", "Turnout %"];
+    const header = ["Class", "Facilitator", "Slot", "Student", ...availableDates.map((d) => formatDateShort(d)), "Sessions Attended", "Total Sessions"];
     const dataRows: (string | number)[][] = [];
 
     for (const c of classes) {
@@ -104,9 +105,8 @@ function exportSnapshotCSV(
         for (const m of roster) {
           const memberRows = rows.filter((r) => r.class_id === c.classId && r.member_id === m.id);
           const count = memberRows.length;
-          const pct = availableDates.length > 0 ? Math.round((count / availableDates.length) * 100) : 0;
           const perDate = availableDates.map((d) => (memberRows.some((r) => dateKeyOf(r.attended_at) === d) ? "Yes" : "No"));
-          dataRows.push([c.name, c.facilitator ?? "", c.slot, memberDisplayName(m), ...perDate, count, availableDates.length, pct]);
+          dataRows.push([c.name, c.facilitator ?? "", c.slot, memberDisplayName(m), ...perDate, count, availableDates.length]);
         }
       } else if (c.classId === null) {
         // Stray/unlinked check-ins with no fixed roster to compare against
@@ -118,9 +118,8 @@ function exportSnapshotCSV(
         }
         for (const [name, memberRows] of Array.from(byName.entries())) {
           const count = memberRows.length;
-          const pct = availableDates.length > 0 ? Math.round((count / availableDates.length) * 100) : 0;
           const perDate = availableDates.map((d) => (memberRows.some((r: AttendanceRow) => dateKeyOf(r.attended_at) === d) ? "Yes" : "No"));
-          dataRows.push([c.name, c.facilitator ?? "", c.slot, name, ...perDate, count, availableDates.length, pct]);
+          dataRows.push([c.name, c.facilitator ?? "", c.slot, name, ...perDate, count, availableDates.length]);
         }
       }
     }
@@ -188,6 +187,8 @@ export default function AttendancePage() {
   // Snapshot tab state
   const [selectedDate, setSelectedDate] = useState<string>("all");
   const [expandedSnapshotClasses, setExpandedSnapshotClasses] = useState<Set<string>>(new Set());
+  const [savingSnapshotMemberId, setSavingSnapshotMemberId] = useState<string | null>(null);
+  const [snapshotStatusError, setSnapshotStatusError] = useState("");
 
   // Log tab state
   const [logSearch, setLogSearch] = useState("");
@@ -309,6 +310,16 @@ export default function AttendancePage() {
 
   function memberAttendanceCount(classId: string | null, memberId: string): number {
     return rows.filter((r) => r.class_id === classId && r.member_id === memberId).length;
+  }
+
+  async function setSnapshotAttendance(memberId: string, present: boolean) {
+    if (selectedDate === "all") return;
+    setSavingSnapshotMemberId(memberId);
+    setSnapshotStatusError("");
+    const result = await setMemberAttendanceStatus(memberId, selectedDate, present);
+    setSavingSnapshotMemberId(null);
+    if (!result.success) { setSnapshotStatusError(result.error ?? "Could not update attendance."); return; }
+    setRows(await getAllAttendanceForAdmin());
   }
 
   // ── Non-Sunday cleanup utility ────────────────────────────────────────────
@@ -534,11 +545,10 @@ export default function AttendancePage() {
                     <div className="overflow-x-auto">
                       <table className="cla-table" style={{ minWidth: "560px" }}>
                         <thead>
-                          <tr><th>Class</th><th>Facilitator</th><th>Slot</th><th>Attended</th><th>Turnout</th></tr>
+                          <tr><th>Class</th><th>Facilitator</th><th>Slot</th><th>Attended</th></tr>
                         </thead>
                         <tbody>
                           {snapshotStats.classes.map((c) => {
-                            const pct = c.rosterSize > 0 ? Math.round((c.count / c.rosterSize) * 100) : null;
                             const key = c.classId ?? c.name;
                             const isExpanded = expandedSnapshotClasses.has(key);
                             const rosterMembers = classRoster.find((cr) => cr.id === c.classId)?.members ?? [];
@@ -558,20 +568,10 @@ export default function AttendancePage() {
                                     {c.count}
                                     {c.rosterSize > 0 && <span style={{ color: "rgba(248,240,230,0.4)", fontWeight: 400 }}> /{c.rosterSize}</span>}
                                   </td>
-                                  <td>
-                                    {pct !== null ? (
-                                      <div className="flex items-center gap-2">
-                                        <div className="rounded-full overflow-hidden" style={{ width: 80, height: 6, background: "rgba(255,255,255,0.07)" }}>
-                                          <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: pct >= 75 ? "linear-gradient(90deg,#a8c000,#C8D400)" : "linear-gradient(90deg,#E89A10,#F8BA18)" }} />
-                                        </div>
-                                        <span className="text-xs" style={{ color: "rgba(248,240,230,0.5)" }}>{pct}%</span>
-                                      </div>
-                                    ) : <span style={{ color: "rgba(248,240,230,0.3)" }}>—</span>}
-                                  </td>
                                 </tr>
                                 {isExpanded && (
                                   <tr>
-                                    <td colSpan={5} style={{ background: "rgba(255,255,255,0.02)", padding: 0, borderTop: "1px solid rgba(228,148,12,0.1)" }}>
+                                    <td colSpan={4} style={{ background: "rgba(255,255,255,0.02)", padding: 0, borderTop: "1px solid rgba(228,148,12,0.1)" }}>
                                       <div className="px-4 py-4">
                                         {rosterMembers.length === 0 ? (
                                           <p className="text-center py-4 text-sm" style={{ color: "rgba(248,240,230,0.4)" }}>No members in this class.</p>
@@ -580,7 +580,7 @@ export default function AttendancePage() {
                                             <div className="overflow-x-auto">
                                               <table className="cla-table" style={{ minWidth: "420px" }}>
                                                 <thead>
-                                                  <tr><th>#</th><th>Name</th><th>{selectedDate === "all" ? "Attendance" : "Status"}</th></tr>
+                                                  <tr><th>#</th><th>Name</th><th>{selectedDate === "all" ? "Attendance" : "Status"}</th>{selectedDate !== "all" && <th>Action</th>}</tr>
                                                 </thead>
                                                 <tbody>
                                                   {rosterMembers.map((m, idx) => (
@@ -606,15 +606,7 @@ export default function AttendancePage() {
                                                       })() : (() => {
                                                         const record = memberAttendanceOnDate(c.classId, m.id, selectedDate);
                                                         return (
-                                                          <td>
-                                                            {record ? (
-                                                              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(200,212,0,0.12)", color: "#C8D400", border: "1px solid rgba(200,212,0,0.3)" }}>
-                                                                ✓ {new Date(record.attended_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-                                                              </span>
-                                                            ) : (
-                                                              <span className="text-xs" style={{ color: "rgba(248,240,230,0.3)" }}>— Absent</span>
-                                                            )}
-                                                          </td>
+                                                          <><td>{record ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(200,212,0,0.12)", color: "#C8D400", border: "1px solid rgba(200,212,0,0.3)" }}>✓ Present</span> : <span className="text-xs" style={{ color: "rgba(248,240,230,0.3)" }}>— Absent</span>}</td><td><button onClick={() => setSnapshotAttendance(m.id, !record)} disabled={savingSnapshotMemberId === m.id} className="text-xs px-2.5 py-1 rounded font-bold" style={{ background: record ? "rgba(192,40,40,0.16)" : "rgba(200,212,0,0.12)", color: record ? "#ff6b6b" : "#C8D400", border: `1px solid ${record ? "rgba(192,40,40,0.35)" : "rgba(200,212,0,0.3)"}` }}>{savingSnapshotMemberId === m.id ? "Saving…" : record ? "Mark absent" : "Mark present"}</button></td></>
                                                         );
                                                       })()}
                                                     </tr>
@@ -635,6 +627,7 @@ export default function AttendancePage() {
                       </table>
                     </div>
                   </div>
+                  {snapshotStatusError && <p className="text-sm" style={{ color: "#ff6b6b" }}>{snapshotStatusError}</p>}
                 </>
               )}
             </div>
