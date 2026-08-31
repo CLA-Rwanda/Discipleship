@@ -5,6 +5,7 @@ import { Users, BookOpen, ClipboardList, AlertTriangle, CheckCircle2, ChevronDow
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
+  LabelList,
 } from "recharts";
 import { StatCard } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
@@ -80,6 +81,21 @@ function CustomTooltip({ active, payload, label }: any) {
       <p className="font-bold mb-1" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>{label}</p>
       {payload.map((p: any) => <p key={p.name} style={{ color: p.color }}>{p.name}: {p.value}</p>)}
     </div>
+  );
+}
+
+function AttendanceBarLabel({ x, y, width, height, value }: any) {
+  if (value === undefined || value === null) return null;
+  const text = String(value);
+  const pillWidth = Math.max(22, text.length * 8 + 10);
+  const pillHeight = 18;
+  const pillX = Number(x) + Number(width) + 5;
+  const pillY = Number(y) + (Number(height) - pillHeight) / 2;
+  return (
+    <g>
+      <rect x={pillX} y={pillY} width={pillWidth} height={pillHeight} rx={4} fill="#080808" />
+      <text x={pillX + pillWidth / 2} y={pillY + 12.5} textAnchor="middle" fill="#fff" fontSize={11} fontWeight={700}>{text}</text>
+    </g>
   );
 }
 
@@ -419,13 +435,14 @@ export default function DashboardPage() {
           <p className="text-center py-12 text-sm" style={{ color: "rgba(248,240,230,0.4)" }}>No attendance records in this period.</p>
         ) : (
           <ResponsiveContainer width="100%" height={Math.max(260, classAttendance.length * 34)}>
-            <BarChart data={classAttendance} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
+            <BarChart data={classAttendance} layout="vertical" margin={{ top: 0, right: 48, left: 10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
               <XAxis type="number" allowDecimals={false} stroke="rgba(248,240,230,0.3)" tick={{ fill: "rgba(248,240,230,0.5)", fontSize: 12 }} />
               <YAxis type="category" dataKey="label" width={115} stroke="rgba(248,240,230,0.3)" tick={{ fill: "rgba(248,240,230,0.55)", fontSize: 10 }} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="count" name="Attendance" radius={[0, 3, 3, 0]}>
                 {classAttendance.map((cls) => <Cell key={cls.id} fill={cls.id === classAttendanceSummary.highest.id ? "#4ade80" : cls.id === classAttendanceSummary.lowest.id ? "#ff6b6b" : AMBER} />)}
+                <LabelList dataKey="count" content={<AttendanceBarLabel />} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
