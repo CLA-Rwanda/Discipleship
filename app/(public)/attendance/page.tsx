@@ -25,6 +25,7 @@ export default function AttendancePage() {
   const [submitted, setSubmitted]     = useState(false);
   const [loading, setLoading]         = useState(false);
   const [serverError, setServerError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [successData, setSuccessData] = useState<{ name: string; slot: string; class_name: string } | null>(null);
   const [alreadyMarkedData, setAlreadyMarkedData] = useState<{ slot: string; class_name: string; attended_at: string } | null>(null);
   const [suggestion, setSuggestion]   = useState<{ text: string } | null>(null);
@@ -38,10 +39,10 @@ export default function AttendancePage() {
 
   // Check time lock
   useEffect(() => {
-    isFormLocked().then(({ locked }) => {
-      setTimeLocked(locked);
-      setLockChecked(true);
-    });
+    isFormLocked()
+      .then(({ locked }) => setTimeLocked(locked))
+      .catch(() => setLoadError("We couldn't load attendance right now. Please check your connection and retry."))
+      .finally(() => setLockChecked(true));
   }, []);
 
   // Pre-fill from localStorage
@@ -93,11 +94,18 @@ export default function AttendancePage() {
     setLoading(true);
     setServerError("");
 
-    const result = await logAttendance({
-      first_name: form.first_name.trim(),
-      last_name:  form.last_name.trim(),
-      other_name: form.other_name.trim() || undefined,
-    });
+    let result;
+    try {
+      result = await logAttendance({
+        first_name: form.first_name.trim(),
+        last_name:  form.last_name.trim(),
+        other_name: form.other_name.trim() || undefined,
+      });
+    } catch {
+      setServerError("We couldn't reach the attendance service. Please check your connection and try again.");
+      setLoading(false);
+      return;
+    }
 
     setLoading(false);
 
@@ -140,6 +148,19 @@ export default function AttendancePage() {
     return (
       <div className="min-h-dvh flex items-center justify-center" style={{ background: "var(--cla-bg-dark)" }}>
         <div className="spinner" style={{ width: 32, height: 32, borderTopColor: "var(--cla-amber)", borderColor: "rgba(228,148,12,0.2)" }} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center p-6 text-center" style={{ background: "var(--cla-bg-dark)" }}>
+        <div className="w-full max-w-sm flex flex-col items-center gap-5">
+          <CLALogo size="md" />
+          <h1 className="text-2xl font-bold" style={{ fontFamily: "Barlow Condensed, sans-serif" }}>Attendance Unavailable</h1>
+          <p className="text-sm" style={{ color: "rgba(248,240,230,0.6)" }}>{loadError}</p>
+          <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-lg text-sm font-bold" style={{ background: "linear-gradient(135deg,#E89A10,#F8BA18)", color: "#200909" }}>Retry</button>
+        </div>
       </div>
     );
   }

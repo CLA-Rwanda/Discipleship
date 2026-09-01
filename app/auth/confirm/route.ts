@@ -29,10 +29,16 @@ export async function GET(request: NextRequest) {
     }
   );
 
-  const { error } = await supabase.auth.verifyOtp({
-    token_hash,
-    type: type as any,
-  });
+  let error;
+  try {
+    ({ error } = await Promise.race([
+      supabase.auth.verifyOtp({ token_hash, type: type as any }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Invite verification timed out")), 10_000)),
+    ]));
+  } catch (err) {
+    console.error("Invite verification failed", err);
+    return NextResponse.redirect(`${origin}/admin/login?error=auth_callback_failed`);
+  }
 
   if (error) {
     return NextResponse.redirect(`${origin}/admin/login?error=invite_expired`);

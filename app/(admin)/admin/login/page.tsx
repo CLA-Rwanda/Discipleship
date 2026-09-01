@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, KeyRound, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { CLALogo } from "@/components/ui/CLALogo";
@@ -20,6 +20,16 @@ export default function AdminLoginPage() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [showLoginPw, setShowLoginPw] = useState(false);
+
+  useEffect(() => {
+    const error = new URLSearchParams(window.location.search).get("error");
+    const messages: Record<string, string> = {
+      invite_expired: "This invitation has expired or has already been used. Ask an administrator to send a new invitation.",
+      invalid_link: "This invitation link is incomplete or invalid. Ask an administrator to send a new invitation.",
+      auth_callback_failed: "We couldn't complete sign-in. Please try again or use your normal password.",
+    };
+    if (error && messages[error]) setLoginError(messages[error]);
+  }, []);
 
   // Change-password state
   const [cpForm, setCpForm] = useState({

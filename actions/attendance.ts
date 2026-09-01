@@ -136,7 +136,7 @@ async function recordAttendance(
   return { success: true, slot: cls.slot, class_name: cls.name, linked: true };
 }
 
-export async function logAttendance(formData: {
+async function logAttendanceInternal(formData: {
   first_name: string;
   last_name: string;
   other_name?: string;
@@ -203,4 +203,19 @@ export async function logAttendance(formData: {
     success: false,
     error: "Your name was not found. Make sure you are registered and enter your name exactly as you registered.",
   };
+}
+
+/** Public attendance entry point. Convert transient server/database failures
+ * into a normal form error instead of rejecting the browser server action. */
+export async function logAttendance(formData: {
+  first_name: string;
+  last_name: string;
+  other_name?: string;
+}): Promise<AttendanceSubmitResult> {
+  try {
+    return await logAttendanceInternal(formData);
+  } catch (error: any) {
+    console.error("Attendance submission failed", error);
+    return { success: false, error: "We couldn't reach the attendance service. Please check your connection and try again." };
+  }
 }
