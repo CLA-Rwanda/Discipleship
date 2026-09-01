@@ -50,6 +50,9 @@ export async function inviteAdminUser(
     // Build our own confirm URL — server handles verifyOtp, no PKCE mismatch
     const inviteUrl = `${getSiteUrl()}/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=invite`;
 
+    // Fallback URL on Netlify, using the same token, in case the primary host fails to load
+    const fallbackInviteUrl = `https://discipleship-alpha.netlify.app/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=invite`;
+
     // Upsert admin_roles
     if (linkData?.user) {
       await adminClient.from("admin_roles").upsert(
@@ -72,6 +75,8 @@ export async function inviteAdminUser(
   <p style="margin:0 0 8px;font-size:14px;color:rgba(232,224,216,0.75);">You've been granted <strong style="color:#F0A500;">${roleLabel}</strong> access to the CLA Discipleship Management Console.</p>
   <p style="margin:0 0 28px;font-size:13px;color:rgba(232,224,216,0.45);">Click the button below to set up your password and get started.</p>
   <a href="${inviteUrl}" style="display:inline-block;padding:14px 32px;background:#D4860A;color:#1A0505;font-weight:800;font-size:15px;text-decoration:none;border-radius:8px;">Accept Invitation</a>
+  <a href="${inviteUrl}" style="display:inline-block;padding:14px 32px;background:#D4860A;color:#1A0505;font-weight:800;font-size:15px;text-decoration:none;border-radius:8px;">Accept Invitation</a>
+<p style="margin:16px 0 0;font-size:12px;color:rgba(232,224,216,0.4);">Having trouble with the button? <a href="${fallbackInviteUrl}" style="color:#F0A500;">Try this alternate link instead</a>.</p>
   <p style="margin:24px 0 0;font-size:11px;color:rgba(232,224,216,0.3);">This link expires in 24 hours. If you did not expect this invitation, you can ignore this email.</p>
 </td></tr>
 </table>
