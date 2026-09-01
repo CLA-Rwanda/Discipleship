@@ -54,7 +54,7 @@ export async function deleteTimeLock(id: string): Promise<{ success: boolean }> 
   return { success: !error };
 }
 
-export async function isFormLocked(): Promise<{ locked: boolean }> {
+export async function isFormLocked(): Promise<{ locked: boolean; retryable?: boolean }> {
   try {
     const admin = createAdminClient();
     const [{ data: enabledRow }, { data: locks }] = await Promise.all([
@@ -71,6 +71,8 @@ export async function isFormLocked(): Promise<{ locked: boolean }> {
     );
     return { locked: !accessible };
   } catch {
-    return { locked: false };
+    // Let the public form retry transient carrier/database failures instead of
+    // silently treating an unavailable check as an unlocked form.
+    return { locked: false, retryable: true };
   }
 }

@@ -10,6 +10,35 @@ import { isFormLocked } from "@/actions/time-lock";
 
 const STORAGE_KEY = "cla_member_attendance";
 
+// Mobile carriers can briefly drop a request while the radio changes state.
+// Retry only transport-level failures; validation and normal server responses
+// are returned to the user immediately.
+const RETRY_DELAYS_MS = [700, 1400];
+
+async function withConnectivityRetries<T>(
+  operation: () => Promise<T>,
+  shouldRetry: (value: T) => boolean = () => false,
+): Promise<T> {
+  let lastValue: T | undefined;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      const value = await operation();
+      lastValue = value;
+      if (!shouldRetry(value) || attempt === RETRY_DELAYS_MS.length) return value;
+    } catch (error) {
+      lastError = error;
+      if (attempt === RETRY_DELAYS_MS.length) throw error;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+  }
+
+  if (lastValue !== undefined) return lastValue;
+  throw lastError ?? new Error("Network request failed");
+}
+
 function formatSlotLabel(slot: string): string {
   const labels: Record<string, string> = {
     "8am":  "8 AM",
@@ -39,8 +68,17 @@ export default function AttendancePage() {
 
   // Check time lock
   useEffect(() => {
-    isFormLocked()
-      .then(({ locked }) => setTimeLocked(locked))
+    withConnectivityRetries(
+      () => isFormLocked(),
+      (value) => value.retryable === true,
+    )
+      .then(({ locked, retryable }) => {
+        if (retryable) {
+          setLoadError("We couldn't load attendance right now. Please check your connection and retry.");
+        } else {
+          setTimeLocked(locked);
+        }
+      })
       .catch(() => setLoadError("We couldn't load attendance right now. Please check your connection and retry."))
       .finally(() => setLockChecked(true));
   }, []);
@@ -96,11 +134,14 @@ export default function AttendancePage() {
 
     let result;
     try {
-      result = await logAttendance({
-        first_name: form.first_name.trim(),
-        last_name:  form.last_name.trim(),
-        other_name: form.other_name.trim() || undefined,
-      });
+      result = await withConnectivityRetries(
+        () => logAttendance({
+          first_name: form.first_name.trim(),
+          last_name:  form.last_name.trim(),
+          other_name: form.other_name.trim() || undefined,
+        }),
+        (value) => "retryable" in value && value.retryable === true,
+      );
     } catch {
       setServerError("We couldn't reach the attendance service. Please check your connection and try again.");
       setLoading(false);

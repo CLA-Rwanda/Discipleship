@@ -85,7 +85,7 @@ export async function getDistinctSlots(): Promise<string[]> {
 
 export type AttendanceSubmitResult =
   | { success: true; slot: string; class_name: string; linked: boolean }
-  | { success: false; error: string }
+  | { success: false; error: string; retryable?: boolean }
   | { needsSuggestion: true; suggestion: string; matchType: "reversed" }
   | { needsOtherName: true }
   | { alreadyMarked: true; slot: string; class_name: string; attended_at: string };
@@ -205,6 +205,14 @@ async function logAttendanceInternal(formData: {
   };
 }
 
+function isConnectivityError(error: unknown): boolean {
+  const value = error as { name?: string; message?: string; status?: number } | null;
+  if (!value) return false;
+  if (typeof value.status === "number") return false;
+  const text = `${value.name ?? ""} ${value.message ?? ""}`.toLowerCase();
+  return value.name === "TypeError" || /network|fetch|timed out|timeout|offline|aborted|connection/.test(text);
+}
+
 /** Public attendance entry point. Convert transient server/database failures
  * into a normal form error instead of rejecting the browser server action. */
 export async function logAttendance(formData: {
@@ -216,6 +224,10 @@ export async function logAttendance(formData: {
     return await logAttendanceInternal(formData);
   } catch (error: any) {
     console.error("Attendance submission failed", error);
-    return { success: false, error: "We couldn't reach the attendance service. Please check your connection and try again." };
+    return {
+      success: false,
+      error: "We couldn't reach the attendance service. Please check your connection and try again.",
+      retryable: isConnectivityError(error),
+    };
   }
 }

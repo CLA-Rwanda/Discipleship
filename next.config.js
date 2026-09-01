@@ -3,10 +3,21 @@ const withPWA = require("next-pwa")({
   disable: process.env.NODE_ENV === "development",
   register: true,
   skipWaiting: true,
-  // Do not cache dynamic documents/API navigations. This prevents an
-  // installed phone PWA from mixing HTML from one deployment with chunks from
-  // another after a new deploy.
-  runtimeCaching: [],
+  // Cache only the public attendance document as a shell. Supabase-backed
+  // requests and all other dynamic pages remain network-only so stale data
+  // cannot be shown. The shell is refreshed whenever the network is available.
+  runtimeCaching: [
+    {
+      urlPattern: /\/attendance(?:\/)?(?:\?.*)?$/,
+      handler: "NetworkFirst",
+      options: {
+        cacheName: "attendance-shell",
+        networkTimeoutSeconds: 5,
+        expiration: { maxEntries: 1, maxAgeSeconds: 60 * 60 * 24 * 7 },
+        cacheableResponse: { statuses: [0, 200] },
+      },
+    },
+  ],
 });
 
 /** @type {import('next').NextConfig} */
