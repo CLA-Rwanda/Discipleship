@@ -55,6 +55,27 @@ const PURPLE      = "#5B2D8E";
 const PIE_COLORS  = [AMBER, YELLOW, PURPLE, "#4ade80", "#60a5fa"];
 const WEEK_OPTIONS = [4, 6, 8, 12, 16];
 
+async function getAllAttendanceForChart(supabase: ReturnType<typeof createClient>) {
+  const PAGE_SIZE = 1000;
+  const all: { attended_at: string; class_id: string | null }[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("attendance")
+      .select("attended_at, class_id")
+      .order("attended_at", { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error || !data || data.length === 0) break;
+    all.push(...(data as { attended_at: string; class_id: string | null }[]));
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+
+  return all;
+}
+
 function dateKeyOf(iso: string): string {
   return new Date(iso).toISOString().slice(0, 10);
 }
@@ -130,7 +151,7 @@ export default function DashboardPage() {
         { count: attendanceThisWeek },
         { data: classes },
         { data: slotRaw },
-        { data: attendanceRaw },
+        attendanceRaw,
         { data: membersWithAttendance },
         { data: settingsRaw },
         { data: allMembersRaw },
@@ -139,7 +160,7 @@ export default function DashboardPage() {
         supabase.from("attendance").select("*", { count: "exact", head: true }).gte("attended_at", weekAgo.toISOString()),
         supabase.from("classes").select("id, name, slot, members(count), facilitators(full_name)").eq("is_active", true).order("name"),
         supabase.from("members").select("preferred_slot"),
-        supabase.from("attendance").select("attended_at, class_id"),
+        getAllAttendanceForChart(supabase),
         supabase.from("attendance").select("member_id").not("member_id", "is", null),
         supabase.from("app_settings").select("key,value"),
         supabase.from("members").select("id, first_name, last_name, other_name, phone, email, preferred_slot, registered_at, classes(name)"),
