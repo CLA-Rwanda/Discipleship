@@ -85,6 +85,21 @@ function memberDisplayName(m: RosterMember): string {
   return m.other_name ? `${m.first_name} ${m.other_name} ${m.last_name}` : `${m.first_name} ${m.last_name}`;
 }
 
+// Keep class lists and exports in the human-expected order (Class 1, Class 2,
+// ... Class 13), rather than sorting by the number of check-ins.
+function compareClassNames(a: string, b: string): number {
+  const classNumber = (name: string) => {
+    const match = name.match(/\bclass\s*(\d+)\b/i);
+    return match ? Number(match[1]) : null;
+  };
+  const aNumber = classNumber(a);
+  const bNumber = classNumber(b);
+  if (aNumber !== null && bNumber !== null && aNumber !== bNumber) return aNumber - bNumber;
+  if (aNumber !== null && bNumber === null) return -1;
+  if (aNumber === null && bNumber !== null) return 1;
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
 // Per-student detail: for a single Sunday, who attended/was absent and when;
 // for All Time, one column per Sunday plus a running total — same shape as
 // what the expandable class rows already show on screen, just exportable.
@@ -284,7 +299,8 @@ export default function AttendancePage() {
       total: snapshotRows.length,
       unique: uniqueSet.size,
       bySlot,
-      classes: [...classes, ...Array.from(strayByKey.values())].sort((a, b) => b.count - a.count),
+      classes: [...classes, ...Array.from(strayByKey.values())]
+        .sort((a, b) => compareClassNames(a.name, b.name)),
     };
   }, [snapshotRows, classRoster]);
 
